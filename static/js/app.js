@@ -5,6 +5,7 @@
 const btn = document.getElementById("checkBtn");
 const clearBtn = document.getElementById("clearBtn");
 const input = document.getElementById("medicineInput");
+const micBtn = document.getElementById("micBtn");
 
 const statusText = document.getElementById("status");
 const loader = document.getElementById("loader");
@@ -470,6 +471,49 @@ if (clearHistoryBtn) {
       setLoading(false);
     }
   });
+}
+
+// ============================
+// Voice Search (Speech-to-Text)
+// ============================
+if (micBtn) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition) {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    micBtn.addEventListener('click', () => {
+      recognition.start();
+    });
+
+    recognition.onstart = function() {
+      micBtn.classList.add("listening");
+      setStatus("🎙️ Listening... Please speak a medicine name.");
+    };
+
+    recognition.onresult = function(event) {
+      const transcript = event.results[0][0].transcript;
+      input.value = transcript.replace(/\.$/, '').trim();
+      setStatus("✅ Speech recognized. Searching...");
+      fetchMedicine();
+    };
+
+    recognition.onerror = function(event) {
+      micBtn.classList.remove("listening");
+      setStatus("❌ Microphone error: " + event.error, false);
+    };
+
+    recognition.onend = function() {
+      micBtn.classList.remove("listening");
+    };
+  } else {
+    micBtn.addEventListener('click', () => {
+      setStatus("❌ Speech Recognition API not supported in this browser.", false);
+    });
+  }
 }
 
 // ============================

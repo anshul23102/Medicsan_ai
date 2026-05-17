@@ -29,7 +29,10 @@
     <div class="card">
       <label for="medicineInput">Enter medicine name:</label>
 
-      <input list="medicineList" type="text" id="medicineInput" placeholder="Example: Paracetamol" />
+      <div class="search-wrapper">
+        <input list="medicineList" type="text" id="medicineInput" placeholder="Example: Paracetamol" />
+        <button id="micBtn" class="mic-btn" type="button" aria-label="Voice Search" title="Click to speak">🎙️</button>
+      </div>
       <datalist id="medicineList"></datalist>
 
       <div class="row">
