@@ -651,3 +651,42 @@ button:disabled{
   background: var(--primaryHover);
 }
 
+/* Improved button animations */
+button {
+    transition: all 0.3s ease;
+    border-radius: 10px;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+}
+
+/* better input styling */
+input {
+    border-radius: 10px;
+    padding: 12px;
+    outline: none;
+}
+
+/*  mobile responsiveness */
+@media (max-width: 768px) {
+
+    .compare-grid {
+        grid-template-columns: 1fr;
+    }
+
+    h1 {
+        font-size: 28px;
+        text-align: center;
+    }
+
+    button {
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    input {
+        width: 100%;
+    }
+}
