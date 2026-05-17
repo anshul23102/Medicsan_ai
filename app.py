@@ -12,6 +12,9 @@ file_lock = threading.Lock()
 # PDF
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 app = Flask(__name__)
 
@@ -587,8 +590,94 @@ Rules:
     except Exception as e:
         return jsonify({"success": False, "error": "Groq AI error. Try again."})
 
+@app.route("/download-report", methods=["POST"])
+def download_report():
+    data = request.get_json() or {}
+    symptoms = data.get("symptoms", "")
+    extracted_text = data.get("extracted_text", "")
+    ai_insights = data.get("ai_insights", "")
 
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=A4,
+        rightMargin=50, leftMargin=50,
+        topMargin=50, bottomMargin=50
+    )
 
+    styles = getSampleStyleSheet()
+    
+    # Custom Styles
+    header_style = ParagraphStyle(
+        name='HeaderStyle',
+        parent=styles['Heading1'],
+        textColor=colors.HexColor('#1e3a8a'),
+        spaceAfter=14
+    )
+    
+    subhead_style = ParagraphStyle(
+        name='SubheadStyle',
+        parent=styles['Heading2'],
+        textColor=colors.HexColor('#0d9488'),
+        spaceAfter=10,
+        spaceBefore=14
+    )
+    
+    body_style = ParagraphStyle(
+        name='BodyStyle',
+        parent=styles['Normal'],
+        textColor=colors.HexColor('#374151'),
+        fontSize=11,
+        leading=15,
+        spaceAfter=10
+    )
+    
+    disclaimer_style = ParagraphStyle(
+        name='DisclaimerStyle',
+        parent=styles['Italic'],
+        textColor=colors.HexColor('#6b7280'),
+        fontSize=9,
+        alignment=1,
+        spaceBefore=30
+    )
+
+    elements = []
+
+    # Title
+    elements.append(Paragraph("MediScan AI Health Report", header_style))
+    elements.append(Spacer(1, 12))
+
+    def format_text(text):
+        if not text:
+            return "N/A"
+        return str(text).replace('\n', '<br/>')
+
+    # Symptoms
+    elements.append(Paragraph("Patient Symptoms", subhead_style))
+    elements.append(Paragraph(format_text(symptoms), body_style))
+
+    # Extracted Text
+    elements.append(Paragraph("Extracted Text (Medical Reports)", subhead_style))
+    elements.append(Paragraph(format_text(extracted_text), body_style))
+
+    # AI Insights
+    elements.append(Paragraph("AI Health Insights", subhead_style))
+    elements.append(Paragraph(format_text(ai_insights), body_style))
+
+    # Disclaimer
+    elements.append(Spacer(1, 20))
+    disclaimer_text = "Disclaimer: This project is for educational and research purposes only and does not replace professional medical advice."
+    elements.append(Paragraph(disclaimer_text, disclaimer_style))
+
+    doc.build(elements)
+    
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="Medicsan_AI_Health_Report.pdf",
+        mimetype="application/pdf"
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

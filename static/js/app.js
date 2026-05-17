@@ -31,6 +31,7 @@ const copyBtn = document.getElementById("copyBtn");
 const favBtn = document.getElementById("favBtn");
 const pdfBtn = document.getElementById("pdfBtn");
 const shareBtn = document.getElementById("shareBtn");
+const exportPdfBtn = document.getElementById("exportPdfBtn");
 
 // Clear history button exists in HTML
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
@@ -63,6 +64,7 @@ function setLoading(isLoading) {
     if (favBtn) favBtn.disabled = true;
     if (pdfBtn) pdfBtn.disabled = true;
     if (shareBtn) shareBtn.disabled = true;
+    if (exportPdfBtn) exportPdfBtn.disabled = true;
   } else {
     hideLoader();
     btn.disabled = false;
@@ -72,6 +74,7 @@ function setLoading(isLoading) {
     if (favBtn) favBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
     if (shareBtn) shareBtn.disabled = false;
+    if (exportPdfBtn) exportPdfBtn.disabled = false;
   }
 }
 
@@ -386,6 +389,62 @@ clearBtn.addEventListener("click", () => {
   resultBox.classList.add("hidden");
   setStatus("✅ Cleared.");
 });
+
+if (exportPdfBtn) {
+  exportPdfBtn.addEventListener("click", async () => {
+    try {
+      const symptomsInput = document.getElementById("symptoms-input");
+      const extractedTextBox = document.getElementById("extracted-text-box");
+      const insightTextContainer = document.getElementById("insight-text-container");
+      
+      const symptoms = symptomsInput ? (symptomsInput.value || symptomsInput.innerText) : "";
+      const extracted_text = extractedTextBox ? (extractedTextBox.value || extractedTextBox.innerText) : "";
+      const ai_insights = insightTextContainer ? (insightTextContainer.value || insightTextContainer.innerText) : "";
+      
+      if (!symptoms && !extracted_text && !ai_insights) {
+        alert("No data available to export. Please ensure the inputs are filled.");
+        return;
+      }
+
+      setLoading(true);
+      setStatus("⏳ Generating AI Insights PDF...");
+
+      const pdfRes = await fetch("/download-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symptoms: symptoms,
+          extracted_text: extracted_text,
+          ai_insights: ai_insights
+        })
+      });
+
+      if (!pdfRes.ok) {
+        throw new Error("Failed to generate PDF");
+      }
+
+      const blob = await pdfRes.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Medicsan_AI_Health_Report.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      setStatus("✅ AI Insights PDF downloaded!");
+      setLoading(false);
+    } catch (e) {
+      alert("Error exporting PDF: " + e.message);
+      setStatus("❌ AI Insights PDF download failed.", false);
+      setLoading(false);
+    }
+  });
+}
+
 
 // ✅ Clear History (NO alert/confirm)
 if (clearHistoryBtn) {
