@@ -6,6 +6,7 @@ from groq import Groq
 from datetime import datetime
 from io import BytesIO
 import threading
+import requests
 
 file_lock = threading.Lock()
 
@@ -142,62 +143,108 @@ def home():
 @app.route("/dashboard")
 def dashboard_page():
     return render_template("dashboard.html")
+medicine_cache = {}
+
+POPULAR_MEDICINES = [
+    "Paracetamol",
+    "Pantoprazole",
+    "Pan D",
+    "Paracip",
+    "Dolo 650",
+    "Crocin",
+    "Calpol",
+    "Cetirizine",
+    "Sinarest",
+    "Benadryl",
+    "Ascoril",
+    "Ibuprofen",
+    "Combiflam",
+    "Omeprazole",
+    "Aspirin",
+    "Atorvastatin",
+    "Metformin",
+    "Azithromycin",
+    "Amoxicillin",
+    "Cofsils"
+]
 
 
-# @app.route("/api/suggestions", methods=["GET"])
-# def suggestions():
-#     history = load_json(HISTORY_PATH, [])
-#     favs = load_json(FAV_PATH, [])
-#     hist_names = [h["query"] for h in history if "query" in h]
-#     fav_names = [f.get("medicine", "") for f in favs if f.get("medicine")]
-
-#     db_names = list(MED_DB.keys())
-
-#     combined = []
-#     for x in (fav_names + hist_names + db_names):
-#         if x and x.lower() not in [c.lower() for c in combined]:
-#             combined.append(x)
-
-#     return jsonify({"success": True, "suggestions": combined[:40]})
 @app.route("/api/suggestions", methods=["GET"])
 def suggestions():
+
     query = request.args.get("q", "").strip().lower()
 
-    if not query:
+    if len(query) < 1:
         return jsonify({"suggestions": []})
 
-    matched = []
+    suggestions = []
 
-    # Search from local medicine database
-    for medicine_name, details in MED_DB.items():
+    # =========================
+    # SUPER FAST LOCAL SEARCH
+    # =========================
 
-        searchable_text = " ".join([
-            medicine_name,
-            details.get("uses", ""),
-            details.get("side_effects", "")
-        ]).lower()
+    for medicine in POPULAR_MEDICINES:
 
-        if query in searchable_text:
-            matched.append(medicine_name.title())
+        if medicine.lower().startswith(query):
 
-    # Extra related medicines
-    related_medicines = {
-        "fever": ["Paracetamol", "Crocin", "Dolo 650", "Calpol"],
-        "cold": ["Cetirizine", "Sinarest", "Crocin Cold & Flu"],
-        "pain": ["Ibuprofen", "Combiflam", "Paracetamol"],
-        "cough": ["Benadryl", "Ascoril", "Corex"],
-        "headache": ["Saridon", "Paracetamol", "Combiflam"]
-    }
+            suggestions.append(medicine)
 
-    for keyword, medicines in related_medicines.items():
-        if query in keyword:
-            matched.extend(medicines)
+    # cache search
+    for medicine in medicine_cache:
 
-    # Remove duplicates
-    matched = list(dict.fromkeys(matched))
+        if medicine.lower().startswith(query):
+
+            suggestions.append(medicine)
+
+    # =========================
+    # FDA API SEARCH
+    # =========================
+
+    try:
+
+        url = (
+            "https://api.fda.gov/drug/label.json?"
+            f"search=openfda.brand_name:{query}*&limit=10"
+        )
+
+        response = requests.get(url, timeout=0.8)
+
+        data = response.json()
+
+        if "results" in data:
+
+            for item in data["results"]:
+
+                openfda = item.get("openfda", {})
+
+                for brand in openfda.get("brand_name", []):
+
+                    clean_name = brand.title()
+
+                    if len(clean_name) < 40:
+
+                        suggestions.append(clean_name)
+
+                        medicine_cache[clean_name] = True
+
+                for generic in openfda.get("generic_name", []):
+
+                    clean_name = generic.title()
+
+                    if len(clean_name) < 40:
+
+                        suggestions.append(clean_name)
+
+                        medicine_cache[clean_name] = True
+
+    except:
+        pass
+
+    # remove duplicates
+    suggestions = list(dict.fromkeys(suggestions))
 
     return jsonify({
-        "suggestions": matched[:10]
+        "suggestions": suggestions[:10]
     })
 
 @app.route("/api/history", methods=["GET"])

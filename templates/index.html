@@ -29,12 +29,11 @@
     <div class="card">
       <label for="medicineInput">Enter medicine name:</label>
 
-      <div class="search-wrapper">
-        <!-- <input list="medicineList" type="text" id="medicineInput" placeholder="Example: Paracetamol" /> -->
-        <input list="medicineList" type="text" id="medicineInput" placeholder="Example: Paracetamol">
-        <button id="micBtn" class="mic-btn" type="button" aria-label="Voice Search" title="Click to speak">🎙️</button>
+      <div class="autocomplete-wrapper">
+        <input type="text" id="medicineInput" placeholder="Search medicine...">
+
+        <div id="medicineSuggestions" class="suggestions-box"></div>
       </div>
-      <datalist id="medicineList"></datalist>
 
       <div class="row">
         <button id="checkBtn">Check Medicine</button>
@@ -119,53 +118,90 @@
   </div>
   
   <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      const medicineInput = document.getElementById("medicineInput");
-        const medicineList = document.getElementById("medicineList");
+   const medicineInput = document.getElementById("medicineInput");
+const suggestionsBox = document.getElementById("medicineSuggestions");
 
-        let debounceTimer;
+let debounceTimer;
 
-        medicineInput.addEventListener("input", function () {
+medicineInput.addEventListener("input", () => {
 
-            clearTimeout(debounceTimer);
+    clearTimeout(debounceTimer);
 
-            const query = medicineInput.value.trim();
+    const query = medicineInput.value.trim();
 
-            if (!query) {
-                medicineList.innerHTML = "";
+    if (!query) {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "none";
+        return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+
+        try {
+
+            const response = await fetch(
+                `/api/suggestions?q=${encodeURIComponent(query)}`
+            );
+
+            const data = await response.json();
+
+            suggestionsBox.innerHTML = "";
+
+            if (!data.suggestions.length) {
+                suggestionsBox.style.display = "none";
                 return;
             }
 
-            debounceTimer = setTimeout(async () => {
+            suggestionsBox.style.display = "block";
 
-                try {
+            data.suggestions.forEach((medicine) => {
 
-                    const response = await fetch(
-                        `/api/suggestions?q=${encodeURIComponent(query)}`
-                    );
+                const item = document.createElement("div");
 
-                    const data = await response.json();
+                item.classList.add("suggestion-item");
 
-                    medicineList.innerHTML = "";
+                // Highlight matching text
+                const regex = new RegExp(`(${query})`, "gi");
 
-                    data.suggestions.forEach(function (medicine) {
+                item.innerHTML = `
+                    ${medicine.replace(
+                        regex,
+                        `<span class="suggestion-match">$1</span>`
+                    )}
+                `;
 
-                        const option = document.createElement("option");
+                item.addEventListener("click", () => {
 
-                        option.value = medicine;
+                    medicineInput.value = medicine;
 
-                        medicineList.appendChild(option);
-                    });
+                    suggestionsBox.innerHTML = "";
 
-                } catch (error) {
-                    console.error("Suggestion Error:", error);
-                }
+                    suggestionsBox.style.display = "none";
+                });
 
-            }, 300);
+                suggestionsBox.appendChild(item);
 
-        });
+            });
 
-    });
+        } catch (error) {
+            console.error(error);
+        }
+
+    }, 50);
+
+});
+
+/* Hide dropdown when clicking outside */
+
+document.addEventListener("click", (e) => {
+
+    if (!e.target.closest(".autocomplete-wrapper")) {
+
+        suggestionsBox.style.display = "none";
+
+    }
+
+});
   </script>
   <script src="/static/js/theme.js"></script>
   <script src="/static/js/app.js"></script>
