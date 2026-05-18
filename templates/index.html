@@ -37,7 +37,17 @@
 
       <div class="row">
         <button id="checkBtn">Check Medicine</button>
+        <button id="scanBtn" class="secondary">📷 Scan Strip</button>
         <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+
+      <input type="file" id="scanFileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+      <canvas id="scanCanvas" class="hidden"></canvas>
+
+      <div id="scanPreview" class="scan-preview hidden">
+        <img id="scanThumb" alt="Preview" />
+        <button id="scanConfirmBtn">🔍 Identify Medicine</button>
+        <button id="scanClearBtn" class="secondary small-btn">✕ Remove</button>
       </div>
 
       <div class="status-row">
@@ -98,6 +108,12 @@
       <div class="ai-box">
         <h3>🤖 AI Summary</h3>
         <p id="aiSummary"></p>
+      </div>
+
+      <div class="substitutes-box hidden" id="substitutesBox">
+        <h3>💸 Affordable Generic Substitutes</h3>
+        <p class="substitutes-note">Chemically equivalent lower-cost alternatives (educational only)</p>
+        <div id="substitutesList" class="substitutes-list"></div>
       </div>
 
       <div class="actions">

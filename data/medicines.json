@@ -13,6 +13,12 @@
       "Do not exceed maximum daily dose",
       "Avoid alcohol",
       "People with liver disease should consult doctor"
+    ],
+    "generic_substitutes": [
+      { "name": "Calpol (GSK)", "active_ingredient_match": 100 },
+      { "name": "Dolo 650 (Micro Labs)", "active_ingredient_match": 100 },
+      { "name": "Crocin (Haleon)", "active_ingredient_match": 100 },
+      { "name": "P-500 (Generic)", "active_ingredient_match": 100 }
     ]
   },
   "ibuprofen": {
@@ -30,6 +36,12 @@
       "Avoid if you have ulcers or gastric bleeding",
       "Take after food",
       "Avoid in kidney disease (doctor advice needed)"
+    ],
+    "generic_substitutes": [
+      { "name": "Brufen (Abbott)", "active_ingredient_match": 100 },
+      { "name": "Combiflam (Sanofi)", "active_ingredient_match": 85 },
+      { "name": "Ibugesic (Cipla)", "active_ingredient_match": 100 },
+      { "name": "Advil Generic (Generic)", "active_ingredient_match": 100 }
     ]
   },
   "cetirizine": {
@@ -44,6 +56,11 @@
     "warnings": [
       "Avoid driving if sleepy",
       "Consult doctor if pregnant or breastfeeding"
+    ],
+    "generic_substitutes": [
+      { "name": "Zyrtec Generic (Generic)", "active_ingredient_match": 100 },
+      { "name": "Cetzine (Sun Pharma)", "active_ingredient_match": 100 },
+      { "name": "Alerid (Cipla)", "active_ingredient_match": 100 }
     ]
   },
   "omeprazole": {
@@ -59,6 +76,12 @@
     "warnings": [
       "Do not use long-term without doctor",
       "May reduce absorption of vitamins/minerals if overused"
+    ],
+    "generic_substitutes": [
+      { "name": "Omez (Dr. Reddy's)", "active_ingredient_match": 100 },
+      { "name": "Prilosec Generic (Generic)", "active_ingredient_match": 100 },
+      { "name": "Ocid (Cipla)", "active_ingredient_match": 100 },
+      { "name": "Omesec (Torrent)", "active_ingredient_match": 100 }
     ]
   }
 }
