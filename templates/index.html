@@ -12,9 +12,9 @@
 
   <div class="container">
     <h1>
-  <span class="emoji">💊</span>
-  MediScan AI
-</h1>
+      <span class="emoji">💊</span>
+      MediScan AI
+    </h1>
     <p class="subtitle">Medicine Info + Side Effects Checker (SDG 3) using Groq</p>
 
     <div class="top-links">
@@ -97,15 +97,34 @@
 
       <!-- Food & Lifestyle Alerts -->
       <div class="alert-box">
-        <h3>⚠️ Food & Lifestyle Alerts</h3>
+        <h3>‼️ Food & Lifestyle Alerts</h3>
         <div class="alert-grid">
           <div>
-            <h4>🍔 Food & Beverages</h4>
+            <h4>Food & Beverages:</h4>
             <ul id="foodInteractions"></ul>
           </div>
           <div>
-            <h4>🏃 Activities & Lifestyle</h4>
+            <h4>Activities & Lifestyle:</h4>
             <ul id="lifestyleInteractions"></ul>
+          </div>
+        </div>
+
+        <!-- Special Age-Group Cautions inside the yellow box itself -->
+        <div style="margin-top: 16px; border-top: 1px solid rgba(255, 179, 64, 0.18); padding-top: 14px;">
+          <h4 style="color: #ffe0a3; margin-bottom: 8px; font-size: 0.98rem; font-weight: 700;">👶👵 Age-Group Cautions:
+          </h4>
+          <div class="alert-grid" style="margin-top: 6px;">
+            <div>
+              <strong style="color: #ffc97a; font-size: 0.9rem; font-weight: 600;">Children:</strong>
+              <p id="pediatricCaution"
+                style="color: var(--mutedText); line-height: 1.55; margin: 4px 0 0 0; font-size: 0.92rem;"></p>
+            </div>
+            <div>
+              <strong style="color: #ffc97a; font-size: 0.9rem; font-weight: 600;">Senior Citizens (Above 60
+                Years):</strong>
+              <p id="geriatricCaution"
+                style="color: var(--mutedText); line-height: 1.55; margin: 4px 0 0 0; font-size: 0.92rem;"></p>
+            </div>
           </div>
         </div>
       </div>
@@ -131,7 +150,7 @@
       </p>
     </div>
   </div>
-  
+
   <script src="/static/js/theme.js"></script>
   <script src="/static/js/app.js"></script>
 </body>

@@ -101,7 +101,9 @@ Return STRICT JSON only in this schema:
   "side_effects": ["..."],
   "warnings": ["..."],
   "food_interactions": ["..."],
-  "lifestyle_interactions": ["..."]
+  "lifestyle_interactions": ["..."],
+  "pediatric_caution": "...",
+  "geriatric_caution": "..."
 }
 """
 
@@ -126,7 +128,7 @@ Return JSON only.
 
     try:
         data = json.loads(text)
-        required = ["generic_name", "use", "dosage", "side_effects", "warnings", "food_interactions", "lifestyle_interactions"]
+        required = ["generic_name", "use", "dosage", "side_effects", "warnings", "food_interactions", "lifestyle_interactions", "pediatric_caution", "geriatric_caution"]
         for k in required:
             if k not in data:
                 return None, "Groq response missing fields."
@@ -229,6 +231,8 @@ def medicine_info():
         med_data = dict(MED_DB[medicine])
         med_data.setdefault("food_interactions", ["No specific food interactions documented. Consult a pharmacist if unsure."])
         med_data.setdefault("lifestyle_interactions", ["No specific lifestyle restrictions documented."])
+        med_data.setdefault("pediatric_caution", "Consult a pediatrician for safe dosing guidelines under 12 years.")
+        med_data.setdefault("geriatric_caution", "No specific precautions documented for individuals above 60 years. Consult a doctor if unsure.")
         return jsonify({"success": True, "source": "database", "medicine": medicine, "data": med_data})
 
     # 2) partial match
@@ -238,6 +242,8 @@ def medicine_info():
             med_data = dict(MED_DB[key])
             med_data.setdefault("food_interactions", ["No specific food interactions documented. Consult a pharmacist if unsure."])
             med_data.setdefault("lifestyle_interactions", ["No specific lifestyle restrictions documented."])
+            med_data.setdefault("pediatric_caution", "Consult a pediatrician for safe dosing guidelines under 12 years.")
+            med_data.setdefault("geriatric_caution", "No specific precautions documented for individuals above 60 years. Consult a doctor if unsure.")
             return jsonify({
                 "success": True,
                 "source": "database",

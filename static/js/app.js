@@ -23,6 +23,8 @@ const sideEffectsEl = document.getElementById("sideEffects");
 const warningsEl = document.getElementById("warnings");
 const foodInteractionsEl = document.getElementById("foodInteractions");
 const lifestyleInteractionsEl = document.getElementById("lifestyleInteractions");
+const pediatricCautionEl = document.getElementById("pediatricCaution");
+const geriatricCautionEl = document.getElementById("geriatricCaution");
 const aiSummary = document.getElementById("aiSummary");
 
 const historyList = document.getElementById("historyList");
@@ -243,6 +245,13 @@ async function fetchMedicine() {
     renderList(warningsEl, med.warnings);
     renderList(foodInteractionsEl, med.food_interactions || []);
     renderList(lifestyleInteractionsEl, med.lifestyle_interactions || []);
+
+    if (pediatricCautionEl) {
+      pediatricCautionEl.textContent = med.pediatric_caution || "No specific cautions documented.";
+    }
+    if (geriatricCautionEl) {
+      geriatricCautionEl.textContent = med.geriatric_caution || "No specific cautions documented.";
+    }
 
     aiSummary.textContent =
       `Use: ${med.use} ` +
