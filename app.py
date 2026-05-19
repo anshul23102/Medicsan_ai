@@ -732,6 +732,81 @@ def clear_history():
 def clear_analytics():
     save_json(ANALYTICS_PATH, {})
     return jsonify({"success": True, "message": "Analytics cleared successfully."})
+@app.route("/api/scan-medicine", methods=["POST"])
+def scan_medicine():
+    if client is None:
+        return jsonify({"success": False, "error": "Groq API key missing. Add GROQ_API_KEY in .env"})
+
+    data = request.get_json()
+    image_b64 = (data.get("image") or "").strip()
+    if not image_b64:
+        return jsonify({"success": False, "error": "No image provided."})
+
+    # strip data-url prefix if present
+    if "," in image_b64:
+        image_b64 = image_b64.split(",", 1)[1]
+
+    system_prompt = """
+You are MediScan AI OCR. Extract the primary generic active ingredient name from the medicine strip or prescription image.
+
+Rules:
+- Return ONLY the main active ingredient / generic medicine name.
+- Ignore batch numbers, expiry dates, manufacturer addresses, dosage numbers, and brand names.
+- If the image is unreadable or unclear, set extracted_medicine_name to null.
+
+Return STRICT JSON only:
+{
+  "extracted_medicine_name": "...",
+  "confidence": "High|Medium|Low",
+  "note": "..."
+}
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[
+                {"role": "system", "content": system_prompt.strip()},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract the medicine name from this image. Return JSON only."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    ],
+                },
+            ],
+            temperature=0.1,
+            max_tokens=200,
+        )
+
+        ocr_text = completion.choices[0].message.content.strip()
+        ocr_json = json.loads(ocr_text)
+        extracted = (ocr_json.get("extracted_medicine_name") or "").strip()
+
+        if not extracted:
+            return jsonify({"success": False, "error": "Image unclear. Please capture a well-lit photo of the medicine strip text."})
+
+        med_data, source, err = get_medicine_data(extracted)
+        if err:
+            return jsonify({"success": False, "error": err})
+
+        update_analytics(extracted.lower())
+        add_to_history(extracted, "ocr-" + source)
+
+        return jsonify({
+            "success": True,
+            "source": source,
+            "medicine": extracted.lower(),
+            "data": med_data,
+            "note": f"Scanned via OCR (confidence: {ocr_json.get('confidence', '?')}). AI-generated info (educational only)."
+        })
+
+    except (json.JSONDecodeError, KeyError):
+        return jsonify({"success": False, "error": "Image unclear. Please capture a well-lit photo of the medicine strip text."})
+    except Exception:
+        return jsonify({"success": False, "error": "OCR scan failed. Try again."})
+
+
 @app.route("/assistant")
 def assistant_page():
     return render_template("assistant.html")
