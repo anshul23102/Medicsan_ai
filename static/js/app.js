@@ -36,6 +36,16 @@ const copyBtn = document.getElementById("copyBtn");
 const favBtn = document.getElementById("favBtn");
 const pdfBtn = document.getElementById("pdfBtn");
 const shareBtn = document.getElementById("shareBtn");
+const substitutesBox = document.getElementById("substitutesBox");
+const substitutesList = document.getElementById("substitutesList");
+
+const scanBtn = document.getElementById("scanBtn");
+const scanFileInput = document.getElementById("scanFileInput");
+const scanCanvas = document.getElementById("scanCanvas");
+const scanPreview = document.getElementById("scanPreview");
+const scanThumb = document.getElementById("scanThumb");
+const scanConfirmBtn = document.getElementById("scanConfirmBtn");
+const scanClearBtn = document.getElementById("scanClearBtn");
 const exportPdfBtn = document.getElementById("exportPdfBtn");
 
 // Clear history button exists in HTML
@@ -69,6 +79,8 @@ function setLoading(isLoading) {
     if (favBtn) favBtn.disabled = true;
     if (pdfBtn) pdfBtn.disabled = true;
     if (shareBtn) shareBtn.disabled = true;
+    if (scanBtn) scanBtn.disabled = true;
+    if (scanConfirmBtn) scanConfirmBtn.disabled = true;
     if (exportPdfBtn) exportPdfBtn.disabled = true;
   } else {
     hideLoader();
@@ -79,6 +91,8 @@ function setLoading(isLoading) {
     if (favBtn) favBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
     if (shareBtn) shareBtn.disabled = false;
+    if (scanBtn) scanBtn.disabled = false;
+    if (scanConfirmBtn) scanConfirmBtn.disabled = false;
     if (exportPdfBtn) exportPdfBtn.disabled = false;
   }
 }
@@ -93,7 +107,7 @@ function renderList(listEl, items) {
 }
 
 function buildCopyText(medName, med, src) {
-  return `
+  let txt = `
 MediScan AI Report
 -----------------------
 Medicine: ${medName}
@@ -111,10 +125,16 @@ Side Effects:
 - ${(med.side_effects || []).join("\n- ")}
 
 Warnings:
-- ${(med.warnings || []).join("\n- ")}
+- ${(med.warnings || []).join("\n- ")}`;
 
-Disclaimer: Educational only. Consult a doctor.
-`.trim();
+  const subs = med.generic_substitutes || [];
+  if (subs.length > 0) {
+    txt += `\n\nAffordable Generic Substitutes:\n`;
+    subs.forEach(s => { txt += `- ${s.name} (Match: ${s.active_ingredient_match}%)\n`; });
+  }
+
+  txt += `\n\nDisclaimer: Educational only. Consult a doctor.`;
+  return txt.trim();
 }
 
 // ============================
@@ -257,6 +277,21 @@ async function fetchMedicine() {
       `Use: ${med.use} ` +
       `Side effects: ${(med.side_effects || []).slice(0, 2).join(", ")}. ` +
       `Warnings: consult a doctor if unsure.`;
+
+    // Generic Substitutes
+    const subs = med.generic_substitutes || [];
+    substitutesList.innerHTML = "";
+    if (subs.length > 0) {
+      subs.forEach(s => {
+        const chip = document.createElement("div");
+        chip.className = "sub-chip";
+        chip.innerHTML = `<span>${s.name}</span><span class="match-badge">${s.active_ingredient_match}% match</span>`;
+        substitutesList.appendChild(chip);
+      });
+      substitutesBox.classList.remove("hidden");
+    } else {
+      substitutesBox.classList.add("hidden");
+    }
 
     // ✅ COPY
     copyBtn.onclick = async () => {
@@ -401,6 +436,7 @@ input.addEventListener("keydown", (e) => {
 clearBtn.addEventListener("click", () => {
   input.value = "";
   resultBox.classList.add("hidden");
+  substitutesBox.classList.add("hidden");
   setStatus("✅ Cleared.");
 });
 
@@ -487,6 +523,159 @@ if (clearHistoryBtn) {
 }
 
 // ============================
+// OCR Scan
+// ============================
+let scanBase64 = null;
+
+scanBtn.addEventListener("click", () => scanFileInput.click());
+
+scanFileInput.addEventListener("change", () => {
+  const file = scanFileInput.files[0];
+  if (!file) return;
+
+  const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+  if (!ALLOWED.includes(file.type)) {
+    setStatus("❌ Only JPEG, PNG, or WebP images are supported.", false);
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    setStatus("❌ Image too large. Please use an image under 5MB.", false);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      scanCanvas.width = w;
+      scanCanvas.height = h;
+      scanCanvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      scanBase64 = scanCanvas.toDataURL("image/jpeg", 0.85);
+      scanThumb.src = scanBase64;
+      scanPreview.classList.remove("hidden");
+      setStatus("🖼️ Image ready. Click 'Identify Medicine' to scan.");
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  scanFileInput.value = "";
+});
+
+scanClearBtn.addEventListener("click", () => {
+  scanBase64 = null;
+  scanPreview.classList.add("hidden");
+  scanThumb.src = "";
+  setStatus("✅ Scan cleared.");
+});
+
+scanConfirmBtn.addEventListener("click", async () => {
+  if (!scanBase64) return;
+
+  setLoading(true);
+  setStatus("⏳ Scanning medicine strip...");
+  resultBox.classList.add("hidden");
+
+  try {
+    const res = await fetch("/api/scan-medicine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: scanBase64 }),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      setStatus("❌ " + data.error, false);
+      setLoading(false);
+      return;
+    }
+
+    // feed into existing renderer by populating input and reusing render logic
+    input.value = data.medicine;
+    scanPreview.classList.add("hidden");
+    scanBase64 = null;
+
+    lastResult = data;
+    const med = data.data;
+    const sourceTag = "📷 OCR Scan";
+
+    medTitle.textContent = `💊 ${data.medicine.toUpperCase()} (${med.generic_name})`;
+    sourceBadge.textContent = sourceTag;
+    note.textContent = data.note ? "✅ " + data.note : "";
+
+    useEl.textContent = med.use;
+    dosageEl.textContent = med.dosage;
+    renderList(sideEffectsEl, med.side_effects);
+    renderList(warningsEl, med.warnings);
+
+    aiSummary.textContent =
+      `Use: ${med.use} ` +
+      `Side effects: ${(med.side_effects || []).slice(0, 2).join(", ")}. ` +
+      `Warnings: consult a doctor if unsure.`;
+
+    const subs = med.generic_substitutes || [];
+    substitutesList.innerHTML = "";
+    if (subs.length > 0) {
+      subs.forEach(s => {
+        const chip = document.createElement("div");
+        chip.className = "sub-chip";
+        chip.innerHTML = `<span>${s.name}</span><span class="match-badge">${s.active_ingredient_match}% match</span>`;
+        substitutesList.appendChild(chip);
+      });
+      substitutesBox.classList.remove("hidden");
+    } else {
+      substitutesBox.classList.add("hidden");
+    }
+
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(buildCopyText(data.medicine, med, sourceTag));
+        setStatus("✅ Copied report to clipboard!");
+      } catch { setStatus("❌ Copy failed.", false); }
+    };
+
+    pdfBtn.onclick = async () => {
+      try {
+        setLoading(true);
+        setStatus("⏳ Creating PDF report...");
+        const pdfRes = await fetch("/api/report/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lastResult),
+        });
+        const blob = await pdfRes.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `mediscan_report_${data.medicine}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+        setStatus("✅ PDF downloaded!");
+        setLoading(false);
+      } catch { setStatus("❌ PDF download failed.", false); setLoading(false); }
+    };
+
+    shareBtn.onclick = async () => {
+      try {
+        const txt = buildCopyText(data.medicine, med, sourceTag);
+        await navigator.clipboard.writeText(txt);
+        setStatus("✅ Report copied! Opening WhatsApp...");
+        window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank");
+      } catch { setStatus("❌ Share failed.", false); }
+    };
+
+    resultBox.classList.remove("hidden");
+    setStatus("✅ Medicine identified! See results below.");
+    loadHistory(); loadFavorites(); loadSuggestions();
+    setLoading(false);
+  } catch (err) {
+    console.error(err);
+    setStatus("❌ Server error. Try again.", false);
+    setLoading(false);
+  }
+});
 // Voice Search (Speech-to-Text)
 // ============================
 if (micBtn) {

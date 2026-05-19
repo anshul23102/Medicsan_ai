@@ -29,15 +29,25 @@
     <div class="card">
       <label for="medicineInput">Enter medicine name:</label>
 
-      <div class="search-wrapper">
-        <input list="medicineList" type="text" id="medicineInput" placeholder="Example: Paracetamol" />
-        <button id="micBtn" class="mic-btn" type="button" aria-label="Voice Search" title="Click to speak">🎙️</button>
+      <div class="autocomplete-wrapper">
+        <input type="text" id="medicineInput" placeholder="Search medicine...">
+
+        <div id="medicineSuggestions" class="suggestions-box"></div>
       </div>
-      <datalist id="medicineList"></datalist>
 
       <div class="row">
         <button id="checkBtn">Check Medicine</button>
+        <button id="scanBtn" class="secondary">📷 Scan Strip</button>
         <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+
+      <input type="file" id="scanFileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+      <canvas id="scanCanvas" class="hidden"></canvas>
+
+      <div id="scanPreview" class="scan-preview hidden">
+        <img id="scanThumb" alt="Preview" />
+        <button id="scanConfirmBtn">🔍 Identify Medicine</button>
+        <button id="scanClearBtn" class="secondary small-btn">✕ Remove</button>
       </div>
 
       <div class="status-row">
@@ -134,6 +144,12 @@
         <p id="aiSummary"></p>
       </div>
 
+      <div class="substitutes-box hidden" id="substitutesBox">
+        <h3>💸 Affordable Generic Substitutes</h3>
+        <p class="substitutes-note">Chemically equivalent lower-cost alternatives (educational only)</p>
+        <div id="substitutesList" class="substitutes-list"></div>
+      </div>
+
       <div class="actions">
         <button id="copyBtn" class="secondary">📋 Copy Result</button>
         <button id="favBtn">⭐ Add Favorite</button>
@@ -150,7 +166,92 @@
       </p>
     </div>
   </div>
+  <script>
+   const medicineInput = document.getElementById("medicineInput");
+const suggestionsBox = document.getElementById("medicineSuggestions");
 
+let debounceTimer;
+
+medicineInput.addEventListener("input", () => {
+
+    clearTimeout(debounceTimer);
+
+    const query = medicineInput.value.trim();
+
+    if (!query) {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "none";
+        return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+
+        try {
+
+            const response = await fetch(
+                `/api/suggestions?q=${encodeURIComponent(query)}`
+            );
+
+            const data = await response.json();
+
+            suggestionsBox.innerHTML = "";
+
+            if (!data.suggestions.length) {
+                suggestionsBox.style.display = "none";
+                return;
+            }
+
+            suggestionsBox.style.display = "block";
+
+            data.suggestions.forEach((medicine) => {
+
+                const item = document.createElement("div");
+
+                item.classList.add("suggestion-item");
+
+                // Highlight matching text
+                const regex = new RegExp(`(${query})`, "gi");
+
+                item.innerHTML = `
+                    ${medicine.replace(
+                        regex,
+                        `<span class="suggestion-match">$1</span>`
+                    )}
+                `;
+
+                item.addEventListener("click", () => {
+
+                    medicineInput.value = medicine;
+
+                    suggestionsBox.innerHTML = "";
+
+                    suggestionsBox.style.display = "none";
+                });
+
+                suggestionsBox.appendChild(item);
+
+            });
+
+        } catch (error) {
+            console.error(error);
+        }
+
+    }, 50);
+
+});
+
+/* Hide dropdown when clicking outside */
+
+document.addEventListener("click", (e) => {
+
+    if (!e.target.closest(".autocomplete-wrapper")) {
+
+        suggestionsBox.style.display = "none";
+
+    }
+
+});
+  </script>
   <script src="/static/js/theme.js"></script>
   <script src="/static/js/app.js"></script>
 </body>

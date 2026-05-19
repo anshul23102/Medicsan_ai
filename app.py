@@ -6,6 +6,7 @@ from groq import Groq
 from datetime import datetime
 from io import BytesIO
 import threading
+import requests
 
 file_lock = threading.Lock()
 
@@ -91,6 +92,7 @@ Rules:
 - Do NOT provide diagnosis, exact prescriptions, or emergency instructions.
 - Dosage must be general, safe, and non-prescriptive.
 - Always include warnings and suggest consulting a doctor.
+- For generic_substitutes, list widely available low-cost generic equivalents with the same active ingredient. Use an empty array [] if none exist.
 
 Return STRICT JSON only in this schema:
 
@@ -103,7 +105,10 @@ Return STRICT JSON only in this schema:
   "food_interactions": ["..."],
   "lifestyle_interactions": ["..."],
   "pediatric_caution": "...",
-  "geriatric_caution": "..."
+  "geriatric_caution": "...",
+  "generic_substitutes": [
+    { "name": "...", "active_ingredient_match": 100 }
+  ]
 }
 """
 
@@ -132,6 +137,8 @@ Return JSON only.
         for k in required:
             if k not in data:
                 return None, "Groq response missing fields."
+        if "generic_substitutes" not in data:
+            data["generic_substitutes"] = []
         return data, None
     except Exception:
         return None, "Groq returned invalid JSON. Try again."
@@ -146,24 +153,109 @@ def home():
 @app.route("/dashboard")
 def dashboard_page():
     return render_template("dashboard.html")
+medicine_cache = {}
+
+POPULAR_MEDICINES = [
+    "Paracetamol",
+    "Pantoprazole",
+    "Pan D",
+    "Paracip",
+    "Dolo 650",
+    "Crocin",
+    "Calpol",
+    "Cetirizine",
+    "Sinarest",
+    "Benadryl",
+    "Ascoril",
+    "Ibuprofen",
+    "Combiflam",
+    "Omeprazole",
+    "Aspirin",
+    "Atorvastatin",
+    "Metformin",
+    "Azithromycin",
+    "Amoxicillin",
+    "Cofsils"
+]
 
 
 @app.route("/api/suggestions", methods=["GET"])
 def suggestions():
-    history = load_json(HISTORY_PATH, [])
-    favs = load_json(FAV_PATH, [])
-    hist_names = [h["query"] for h in history if "query" in h]
-    fav_names = [f.get("medicine", "") for f in favs if f.get("medicine")]
 
-    db_names = list(MED_DB.keys())
+    query = request.args.get("q", "").strip().lower()
 
-    combined = []
-    for x in (fav_names + hist_names + db_names):
-        if x and x.lower() not in [c.lower() for c in combined]:
-            combined.append(x)
+    if len(query) < 1:
+        return jsonify({"suggestions": []})
 
-    return jsonify({"success": True, "suggestions": combined[:40]})
+    suggestions = []
 
+    # =========================
+    # SUPER FAST LOCAL SEARCH
+    # =========================
+
+    for medicine in POPULAR_MEDICINES:
+
+        if medicine.lower().startswith(query):
+
+            suggestions.append(medicine)
+
+    # cache search
+    for medicine in medicine_cache:
+
+        if medicine.lower().startswith(query):
+
+            suggestions.append(medicine)
+
+    # =========================
+    # FDA API SEARCH
+    # =========================
+
+    try:
+
+        url = (
+            "https://api.fda.gov/drug/label.json?"
+            f"search=openfda.brand_name:{query}*&limit=10"
+        )
+
+        response = requests.get(url, timeout=0.8)
+
+        data = response.json()
+
+        if "results" in data:
+
+            for item in data["results"]:
+
+                openfda = item.get("openfda", {})
+
+                for brand in openfda.get("brand_name", []):
+
+                    clean_name = brand.title()
+
+                    if len(clean_name) < 40:
+
+                        suggestions.append(clean_name)
+
+                        medicine_cache[clean_name] = True
+
+                for generic in openfda.get("generic_name", []):
+
+                    clean_name = generic.title()
+
+                    if len(clean_name) < 40:
+
+                        suggestions.append(clean_name)
+
+                        medicine_cache[clean_name] = True
+
+    except:
+        pass
+
+    # remove duplicates
+    suggestions = list(dict.fromkeys(suggestions))
+
+    return jsonify({
+        "suggestions": suggestions[:10]
+    })
 
 @app.route("/api/history", methods=["GET"])
 def history_api():
@@ -180,6 +272,12 @@ def favorites_api():
 @app.route("/api/favorites/toggle", methods=["POST"])
 def favorites_toggle():
     data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "success": False,
+            "error": "Invalid request body."
+        }), 400
     medicine = (data.get("medicine") or "").strip().lower()
     generic_name = (data.get("generic_name") or "").strip()
 
@@ -214,32 +312,32 @@ def analytics_api():
 
 @app.route("/api/medicine", methods=["POST"])
 def medicine_info():
-    data = request.get_json() or {}
-    medicine = (data.get("medicine") or "").strip().lower()[:200]
+    try:
+        data = request.get_json()
 
-    if not medicine:
-        return jsonify({"success": False, "error": "Please enter a medicine name."})
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Invalid or missing JSON request body."
+            }), 400
 
-    medicine = " ".join(medicine.split())
+        medicine = (data.get("medicine") or "").strip().lower()[:200]
 
-    # analytics
-    update_analytics(medicine)
+        if not medicine:
+            return jsonify({
+                "success": False,
+                "error": "Please enter a medicine name."
+            }), 400
 
-    # 1) exact match
-    if medicine in MED_DB:
-        add_to_history(medicine, "database")
-        med_data = dict(MED_DB[medicine])
-        med_data.setdefault("food_interactions", ["No specific food interactions documented. Consult a pharmacist if unsure."])
-        med_data.setdefault("lifestyle_interactions", ["No specific lifestyle restrictions documented."])
-        med_data.setdefault("pediatric_caution", "Consult a pediatrician for safe dosing guidelines under 12 years.")
-        med_data.setdefault("geriatric_caution", "No specific precautions documented for individuals above 60 years. Consult a doctor if unsure.")
-        return jsonify({"success": True, "source": "database", "medicine": medicine, "data": med_data})
+        medicine = " ".join(medicine.split())
 
-    # 2) partial match
-    for key in MED_DB:
-        if medicine in key or key in medicine:
-            add_to_history(key, "database")
-            med_data = dict(MED_DB[key])
+        # analytics
+        update_analytics(medicine)
+
+        # 1) exact match
+        if medicine in MED_DB:
+            add_to_history(medicine, "database")
+            med_data = dict(MED_DB[medicine])
             med_data.setdefault("food_interactions", ["No specific food interactions documented. Consult a pharmacist if unsure."])
             med_data.setdefault("lifestyle_interactions", ["No specific lifestyle restrictions documented."])
             med_data.setdefault("pediatric_caution", "Consult a pediatrician for safe dosing guidelines under 12 years.")
@@ -247,24 +345,52 @@ def medicine_info():
             return jsonify({
                 "success": True,
                 "source": "database",
-                "medicine": key,
-                "data": med_data,
-                "note": "Closest match found in database."
-            })
+                "medicine": medicine,
+                "data": med_data
+            }), 200
 
-    # 3) Groq
-    ai_data, err = groq_medicine_lookup(medicine)
-    if err:
-        return jsonify({"success": False, "error": err})
+        # 2) partial match
+        for key in MED_DB:
+            if medicine in key or key in medicine:
+                add_to_history(key, "database")
+                med_data = dict(MED_DB[key])
+                med_data.setdefault("food_interactions", ["No specific food interactions documented. Consult a pharmacist if unsure."])
+                med_data.setdefault("lifestyle_interactions", ["No specific lifestyle restrictions documented."])
+                med_data.setdefault("pediatric_caution", "Consult a pediatrician for safe dosing guidelines under 12 years.")
+                med_data.setdefault("geriatric_caution", "No specific precautions documented for individuals above 60 years. Consult a doctor if unsure.")
+                return jsonify({
+                    "success": True,
+                    "source": "database",
+                    "medicine": key,
+                    "data": med_data,
+                    "note": "Closest match found in database."
+                }), 200
 
-    add_to_history(medicine, "groq")
-    return jsonify({
-        "success": True,
-        "source": "groq",
-        "medicine": medicine,
-        "data": ai_data,
-        "note": "AI-generated info (educational only)."
-    })
+        # AI lookup
+        ai_data, err = groq_medicine_lookup(medicine)
+
+        if err:
+            return jsonify({
+                "success": False,
+                "error": err
+            }), 500
+
+        add_to_history(medicine, "groq")
+
+        return jsonify({
+            "success": True,
+            "source": "groq",
+            "medicine": medicine,
+            "data": ai_data,
+            "note": "AI-generated info (educational only)."
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Internal server error.",
+            "details": str(e)
+        }), 500
 def get_medicine_data(medicine_name: str):
     """
     Returns: (data_dict, source, error)
@@ -322,32 +448,50 @@ def compare_page():
 
 @app.route("/api/compare", methods=["POST"])
 def compare_medicines():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    med_a = (data.get("medicineA") or "").strip()
-    med_b = (data.get("medicineB") or "").strip()
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Invalid request body."
+            }), 400
 
-    if not med_a or not med_b:
-        return jsonify({"success": False, "error": "Please enter both medicine names."})
+        med_a = (data.get("medicineA") or "").strip()
+        med_b = (data.get("medicineB") or "").strip()
 
-    a_data, a_source, err_a = get_medicine_data(med_a)
-    if err_a:
-        return jsonify({"success": False, "error": f"Medicine A error: {err_a}"})
+        if not med_a or not med_b:
+            return jsonify({
+                "success": False,
+                "error": "Please enter both medicine names."
+            }), 400
 
-    b_data, b_source, err_b = get_medicine_data(med_b)
-    if err_b:
-        return jsonify({"success": False, "error": f"Medicine B error: {err_b}"})
+        a_data, a_source, err_a = get_medicine_data(med_a)
+        if err_a:
+            return jsonify({
+                "success": False,
+                "error": f"Medicine A error: {err_a}"
+            }), 500
 
-    # Groq verdict (comparison)
-    verdict = None
-    if client:
-        system_prompt = """
+        b_data, b_source, err_b = get_medicine_data(med_b)
+        if err_b:
+            return jsonify({
+                "success": False,
+                "error": f"Medicine B error: {err_b}"
+            }), 500
+
+        # Groq verdict (comparison)
+        verdict = None
+
+        if client:
+            system_prompt = """
 You are MediScan AI, an educational medicine comparison assistant.
 
 Rules:
 - Educational only
 - No diagnosis or prescriptions
 - Mention consult doctor
+
 Return JSON only:
 
 {
@@ -358,7 +502,7 @@ Return JSON only:
 }
 """
 
-        user_prompt = f"""
+            user_prompt = f"""
 Compare these medicines in simple language:
 
 Medicine A: {med_a}
@@ -370,49 +514,79 @@ Data B: {json.dumps(b_data)}
 Return JSON only.
 """
 
-        try:
-            completion = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": system_prompt.strip()},
-                    {"role": "user", "content": user_prompt.strip()},
-                ],
-                temperature=0.2,
-                max_tokens=600,
-            )
-            verdict_text = completion.choices[0].message.content.strip()
-            verdict = json.loads(verdict_text)
-        except Exception:
-            verdict = {
-                "summary": "AI verdict failed. Please try again.",
-                "safer_for_stomach": "depends",
-                "key_differences": [],
-                "warning": "Consult doctor for medical decisions."
-            }
+            try:
+                completion = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[
+                        {"role": "system", "content": system_prompt.strip()},
+                        {"role": "user", "content": user_prompt.strip()},
+                    ],
+                    temperature=0.2,
+                    max_tokens=600,
+                )
 
-    return jsonify({
-        "success": True,
-        "medicineA": {"name": med_a, "source": a_source, "data": a_data},
-        "medicineB": {"name": med_b, "source": b_source, "data": b_data},
-        "verdict": verdict
-    })
+                verdict_text = completion.choices[0].message.content.strip()
+                verdict = json.loads(verdict_text)
+
+            except Exception:
+                verdict = {
+                    "summary": "AI verdict failed. Please try again.",
+                    "safer_for_stomach": "depends",
+                    "key_differences": [],
+                    "warning": "Consult doctor for medical decisions."
+                }
+
+        return jsonify({
+            "success": True,
+            "medicineA": {
+                "name": med_a,
+                "source": a_source,
+                "data": a_data
+            },
+            "medicineB": {
+                "name": med_b,
+                "source": b_source,
+                "data": b_data
+            },
+            "verdict": verdict
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Failed to compare medicines.",
+            "details": str(e)
+        }), 500
 @app.route("/interaction")
 def interaction_page():
     return render_template("interaction.html")
 @app.route("/api/interaction", methods=["POST"])
 def medicine_interaction():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    med_a = (data.get("medicineA") or "").strip()
-    med_b = (data.get("medicineB") or "").strip()
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Invalid request body."
+            }), 400
 
-    if not med_a or not med_b:
-        return jsonify({"success": False, "error": "Please enter both medicine names."})
+        med_a = (data.get("medicineA") or "").strip()
+        med_b = (data.get("medicineB") or "").strip()
 
-    if client is None:
-        return jsonify({"success": False, "error": "Groq API key missing. Add GROQ_API_KEY in .env"})
+        if not med_a or not med_b:
+            return jsonify({
+                "success": False,
+                "error": "Please enter both medicine names."
+            }), 400
 
-    system_prompt = """
+        if client is None:
+            return jsonify({
+                "success": False,
+                "error": "Groq API key missing. Add GROQ_API_KEY in .env"
+            }), 500
+
+        system_prompt = """
 You are MediScan AI, an educational medicine interaction checker.
 
 Rules:
@@ -420,6 +594,7 @@ Rules:
 - No diagnosis, prescriptions, or emergency instructions.
 - If uncertain, say "unknown" or "not enough info".
 - Always recommend consulting a doctor/pharmacist.
+
 Return STRICT JSON only:
 
 {
@@ -431,7 +606,7 @@ Return STRICT JSON only:
 }
 """
 
-    user_prompt = f"""
+        user_prompt = f"""
 Check possible drug interaction between:
 
 Medicine A: {med_a}
@@ -440,7 +615,6 @@ Medicine B: {med_b}
 Return JSON only.
 """
 
-    try:
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -454,19 +628,17 @@ Return JSON only.
         text = completion.choices[0].message.content.strip()
         result = json.loads(text)
 
-        return jsonify({"success": True, "data": result})
-
-    except Exception:
         return jsonify({
             "success": True,
-            "data": {
-                "risk_level": "unknown",
-                "interaction_summary": "AI could not confidently evaluate this interaction. Try again.",
-                "what_to_avoid": [],
-                "warning_signs": [],
-                "final_note": "Educational only. Consult a doctor/pharmacist."
-            }
-        })
+            "data": result
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Failed to check medicine interaction.",
+            "details": str(e)
+        }), 500
 @app.route("/api/favorites/clear", methods=["POST"])
 def clear_favorites():
     save_json(FAV_PATH, [])
@@ -479,6 +651,11 @@ def report_pdf():
     Creates a PDF report for current medicine response.
     """
     data = request.get_json()
+    if not data:
+        return jsonify({
+            "success": False,
+            "error": "Invalid request body."
+        }), 400
     medicine = (data.get("medicine") or "Unknown").upper()
     source = (data.get("source") or "Unknown")
     med = data.get("data") or {}
@@ -488,6 +665,7 @@ def report_pdf():
     dosage = med.get("dosage", "")
     side_effects = med.get("side_effects", [])
     warnings = med.get("warnings", [])
+    generic_substitutes = med.get("generic_substitutes", [])
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -540,6 +718,13 @@ def report_pdf():
     draw_block("Side Effects", "- " + "\n- ".join(side_effects) if side_effects else "Not available")
     draw_block("Warnings", "- " + "\n- ".join(warnings) if warnings else "Not available")
 
+    if generic_substitutes:
+        subs_text = "\n".join(
+            f"- {s.get('name', '')} (Match: {s.get('active_ingredient_match', '?')}%)"
+            for s in generic_substitutes
+        )
+        draw_block("Affordable Generic Substitutes", subs_text)
+
     y -= 25
     c.setFont("Helvetica-Oblique", 10)
     c.drawString(50, y, "Disclaimer: Educational project only. Not medical advice. Always consult a doctor.")
@@ -561,6 +746,81 @@ def clear_history():
 def clear_analytics():
     save_json(ANALYTICS_PATH, {})
     return jsonify({"success": True, "message": "Analytics cleared successfully."})
+@app.route("/api/scan-medicine", methods=["POST"])
+def scan_medicine():
+    if client is None:
+        return jsonify({"success": False, "error": "Groq API key missing. Add GROQ_API_KEY in .env"})
+
+    data = request.get_json()
+    image_b64 = (data.get("image") or "").strip()
+    if not image_b64:
+        return jsonify({"success": False, "error": "No image provided."})
+
+    # strip data-url prefix if present
+    if "," in image_b64:
+        image_b64 = image_b64.split(",", 1)[1]
+
+    system_prompt = """
+You are MediScan AI OCR. Extract the primary generic active ingredient name from the medicine strip or prescription image.
+
+Rules:
+- Return ONLY the main active ingredient / generic medicine name.
+- Ignore batch numbers, expiry dates, manufacturer addresses, dosage numbers, and brand names.
+- If the image is unreadable or unclear, set extracted_medicine_name to null.
+
+Return STRICT JSON only:
+{
+  "extracted_medicine_name": "...",
+  "confidence": "High|Medium|Low",
+  "note": "..."
+}
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview",
+            messages=[
+                {"role": "system", "content": system_prompt.strip()},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract the medicine name from this image. Return JSON only."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    ],
+                },
+            ],
+            temperature=0.1,
+            max_tokens=200,
+        )
+
+        ocr_text = completion.choices[0].message.content.strip()
+        ocr_json = json.loads(ocr_text)
+        extracted = (ocr_json.get("extracted_medicine_name") or "").strip()
+
+        if not extracted:
+            return jsonify({"success": False, "error": "Image unclear. Please capture a well-lit photo of the medicine strip text."})
+
+        med_data, source, err = get_medicine_data(extracted)
+        if err:
+            return jsonify({"success": False, "error": err})
+
+        update_analytics(extracted.lower())
+        add_to_history(extracted, "ocr-" + source)
+
+        return jsonify({
+            "success": True,
+            "source": source,
+            "medicine": extracted.lower(),
+            "data": med_data,
+            "note": f"Scanned via OCR (confidence: {ocr_json.get('confidence', '?')}). AI-generated info (educational only)."
+        })
+
+    except (json.JSONDecodeError, KeyError):
+        return jsonify({"success": False, "error": "Image unclear. Please capture a well-lit photo of the medicine strip text."})
+    except Exception:
+        return jsonify({"success": False, "error": "OCR scan failed. Try again."})
+
+
 @app.route("/assistant")
 def assistant_page():
     return render_template("assistant.html")
@@ -602,7 +862,11 @@ Rules:
         return jsonify({"success": True, "answer": answer})
 
     except Exception as e:
-        return jsonify({"success": False, "error": "Groq AI error. Try again."})
+        return jsonify({
+        "success": False,
+        "error": "Groq AI error. Try again.",
+        "details": str(e)
+    }), 500
 
 @app.route("/download-report", methods=["POST"])
 def download_report():
