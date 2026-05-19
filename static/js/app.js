@@ -248,10 +248,7 @@ async function fetchMedicine() {
     lastResult = data;
 
     const med = data.data;
-    // const sourceTag = data.source === "groq" ? "🤖 Groq AI" : "📦 Database";
-    const sourceTag = data.source === "groq"
-    ? '<i class="fa-solid fa-robot"></i> Groq AI'
-    : '<i class="fa-solid fa-database"></i> Database';
+    const sourceTag = data.source === "groq" ? "🤖 Groq AI" : "📦 Database";
 
     medTitle.textContent = `💊 ${data.medicine.toUpperCase()} (${med.generic_name})`;
     sourceBadge.textContent = sourceTag;

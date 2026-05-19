@@ -940,7 +940,8 @@ input {
     padding: 5px !important;
 }
 
-i {
-  margin-right: 8px;
-  color: #2563eb;
+
+.dashboard-icon {
+  filter: none;
+  color: initial;
 }
