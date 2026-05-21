@@ -436,6 +436,10 @@ input.addEventListener("keydown", (e) => {
 clearBtn.addEventListener("click", () => {
   input.value = "";
   resultBox.classList.add("hidden");
+  setStatus("✅ Cleared");
+    setTimeout(() => {
+    setStatus(""); // ← dismiss the message after 2.5s
+  }, 1500);
   substitutesBox.classList.add("hidden");
   setStatus("✅ Cleared.");
 });
