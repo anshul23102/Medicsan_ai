@@ -1,12 +1,7 @@
 [
   {
-    "query": "toxin",
-    "source": "groq",
-    "time": "2026-01-12 22:09:09"
-  },
-  {
-    "query": "sora",
-    "source": "groq",
-    "time": "2026-01-12 19:01:10"
+    "query": "paracetamol",
+    "source": "database",
+    "time": "2026-05-20 16:23:10"
   }
 ]
