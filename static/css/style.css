@@ -1217,3 +1217,132 @@ input {
   background: none !important;
   -webkit-text-fill-color: initial !important;
 }
+
+/* =========================
+   DRAG AND DROP ZONE
+========================= */
+.drop-zone {
+  width: 100%;
+  padding: 40px 20px;
+  border: 2px dashed var(--secondaryBorder);
+  border-radius: var(--radius);
+  background: var(--inputBg);
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.drop-zone:hover, .drop-zone.highlight {
+  border-color: rgba(0, 212, 255, 0.6);
+  background: rgba(0, 212, 255, 0.05);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.1) inset;
+}
+
+.drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.drop-icon {
+  font-size: 2.5rem;
+  margin-bottom: 5px;
+  background: none !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+.browse-link {
+  color: #3a7dff;
+  font-weight: bold;
+  text-decoration: underline;
+  pointer-events: auto;
+}
+
+.small-text {
+  font-size: 0.85rem;
+  color: var(--softText);
+}
+
+.upload-status {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.upload-status.processing {
+  background: rgba(0, 212, 255, 0.15);
+  color: #00d4ff;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.upload-status.error {
+  background: var(--dangerBg);
+  color: var(--dangerText);
+  border: 1px solid var(--dangerBorder);
+}
+
+.analysis-result {
+  margin-top: 20px;
+  padding: 20px;
+  background: rgba(95, 125, 255, 0.1);
+  border: 1px solid rgba(95, 125, 255, 0.3);
+  border-radius: var(--radius);
+  animation: dropdownFade 0.4s ease;
+}
+
+.analysis-result h4 {
+  margin-bottom: 15px;
+  color: #3a7dff;
+  font-size: 1.2rem;
+}
+
+.analysis-summary {
+  line-height: 1.6;
+  margin-bottom: 15px;
+  color: var(--text);
+}
+
+.analysis-result h5 {
+  margin-top: 15px;
+  margin-bottom: 8px;
+  color: #8a5bff;
+  font-size: 1.05rem;
+}
+
+.abnormal-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 0.95rem;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.abnormal-table th, .abnormal-table td {
+  padding: 10px;
+  border: 1px solid var(--secondaryBorder);
+  text-align: left;
+}
+
+.abnormal-table th {
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--mutedText);
+}
+
+.analysis-note {
+  margin-top: 20px;
+  padding: 12px;
+  background: rgba(255, 179, 64, 0.15);
+  border: 1px solid rgba(255, 179, 64, 0.3);
+  border-radius: 12px;
+  color: #ffb340;
+  font-weight: bold;
+}
