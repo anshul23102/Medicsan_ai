@@ -1765,5 +1765,100 @@ def download_report():
         mimetype="application/pdf"
     )
 
+@app.route("/api/upload-report", methods=["POST"])
+@login_required
+def upload_report():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded."}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected."}), 400
+
+    filename = file.filename.lower()
+    
+    try:
+        if filename.endswith('.pdf'):
+            import PyPDF2
+            reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    text += extracted + "\n"
+            
+            if not text.strip():
+                return jsonify({"success": False, "error": "Could not extract text from PDF. It might be scanned/image-based."}), 400
+
+            system_prompt = """
+You are MediScan AI, an educational medical assistant.
+Analyze the following lab report/medical document text and provide a simple, easy-to-understand summary.
+Mention any abnormal values or key findings.
+Do NOT diagnose or provide medical advice. Always recommend consulting a doctor.
+
+Return JSON ONLY:
+{
+  "summary": "...",
+  "key_findings": ["..."],
+  "abnormal_values": [{"test": "...", "value": "...", "reference_range": "..."}],
+  "note": "..."
+}
+"""
+            completion = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": system_prompt.strip()},
+                    {"role": "user", "content": text[:4000]}
+                ],
+                temperature=0.2,
+                max_tokens=800
+            )
+            result = json.loads(completion.choices[0].message.content.strip())
+            return jsonify({"success": True, "analysis": result})
+
+        elif filename.endswith(('.png', '.jpg', '.jpeg')):
+            import base64
+            image_b64 = base64.b64encode(file.read()).decode('utf-8')
+            
+            system_prompt = """
+You are MediScan AI, an educational medical assistant.
+Analyze the following image of a lab report/medical document and provide a simple, easy-to-understand summary.
+Mention any abnormal values or key findings.
+Do NOT diagnose or provide medical advice. Always recommend consulting a doctor.
+
+Return JSON ONLY:
+{
+  "summary": "...",
+  "key_findings": ["..."],
+  "abnormal_values": [{"test": "...", "value": "...", "reference_range": "..."}],
+  "note": "..."
+}
+"""
+            completion = client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview",
+                messages=[
+                    {"role": "system", "content": system_prompt.strip()},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Analyze this medical report image. Return JSON only."},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                        ]
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=800
+            )
+            result = json.loads(completion.choices[0].message.content.strip())
+            return jsonify({"success": True, "analysis": result})
+            
+        else:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PDF, PNG, JPG, or JPEG."}), 400
+
+    except json.JSONDecodeError:
+         return jsonify({"success": False, "error": "Failed to parse AI response. Try again."}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Error processing file: {str(e)}"}), 500
+
 if __name__ == "__main__":
     app.run(debug=True)

@@ -7,3 +7,4 @@ requests==2.32.3
 pdfkit
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
+PyPDF2==3.0.1

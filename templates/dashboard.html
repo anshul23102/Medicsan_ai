@@ -54,6 +54,31 @@
 
       <div id="topList" class="analytics-list">Loading...</div>
     </div>
+
+    <!-- Drag and Drop Zone -->
+    <div class="history-card" style="margin-top: 20px;">
+      <div class="card-head">
+        <h3>📄 Medical Document Upload</h3>
+        <span class="small-badge">AI Analysis</span>
+      </div>
+      <p class="subtitle" style="margin-top: 0; margin-bottom: 15px; font-size: 0.9em;">Drag & drop your lab results (PDF/Image) to get a simplified AI summary.</p>
+
+      <div id="dropZone" class="drop-zone">
+        <div class="drop-zone-content">
+          <div class="drop-icon">📂</div>
+          <p>Drag and drop file here</p>
+          <p class="small-text">or <span class="browse-link">browse files</span></p>
+          <input type="file" id="fileInput" accept=".pdf, .png, .jpg, .jpeg" hidden />
+        </div>
+      </div>
+      
+      <div id="uploadStatus" class="upload-status" style="display: none;"></div>
+      
+      <div id="analysisResult" class="analysis-result" style="display: none;">
+        <h4>📝 Analysis Summary</h4>
+        <div id="analysisContent"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Analytics Script (No alert, No confirm) -->
@@ -117,6 +142,106 @@
 
     loadAnalytics();
     
+    // Drag and Drop Logic
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const analysisResult = document.getElementById('analysisResult');
+    const analysisContent = document.getElementById('analysisContent');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, preventDefaults, false);
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.add('highlight'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.remove('highlight'), false);
+    });
+
+    dropZone.addEventListener('drop', handleDrop, false);
+    fileInput.addEventListener('change', function() {
+      if (this.files.length) {
+        handleFiles(this.files);
+      }
+    });
+
+    function handleDrop(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      handleFiles(files);
+    }
+
+    function handleFiles(files) {
+      if (files.length === 0) return;
+      const file = files[0];
+      uploadFile(file);
+    }
+
+    async function uploadFile(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      uploadStatus.style.display = 'block';
+      uploadStatus.innerHTML = '⏳ Uploading and analyzing... (This may take a moment)';
+      uploadStatus.className = 'upload-status processing';
+      analysisResult.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/upload-report', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          uploadStatus.style.display = 'none';
+          analysisResult.style.display = 'block';
+          
+          let html = `<p class="analysis-summary">${data.analysis.summary || ''}</p>`;
+          
+          if (data.analysis.key_findings && data.analysis.key_findings.length > 0) {
+            html += `<h5>Key Findings:</h5><ul>`;
+            data.analysis.key_findings.forEach(finding => {
+              html += `<li>${finding}</li>`;
+            });
+            html += `</ul>`;
+          }
+          
+          if (data.analysis.abnormal_values && data.analysis.abnormal_values.length > 0) {
+             html += `<h5>Abnormal Values:</h5><div class="table-container"><table class="abnormal-table">
+               <tr><th>Test</th><th>Value</th><th>Reference Range</th></tr>`;
+             data.analysis.abnormal_values.forEach(item => {
+               html += `<tr><td>${item.test || ''}</td><td style="color:#dc2626;font-weight:bold;">${item.value || ''}</td><td>${item.reference_range || ''}</td></tr>`;
+             });
+             html += `</table></div>`;
+          }
+          
+          if (data.analysis.note) {
+            html += `<div class="analysis-note">⚠️ ${data.analysis.note}</div>`;
+          }
+          
+          analysisContent.innerHTML = html;
+        } else {
+          uploadStatus.innerHTML = `❌ Error: ${data.error}`;
+          uploadStatus.className = 'upload-status error';
+        }
+      } catch (error) {
+        uploadStatus.innerHTML = `❌ Error: Failed to communicate with server.`;
+        uploadStatus.className = 'upload-status error';
+      }
+    }
   </script>
 
   <!-- Theme Script -->
