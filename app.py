@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
 import json
 import os
 from dotenv import load_dotenv
@@ -9,13 +9,11 @@ import threading
 import requests
 import pdfkit
 
-
 file_lock = threading.Lock()
 
 # PDF
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-# from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
@@ -26,7 +24,47 @@ from reportlab.platypus import (
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'supersecretkey123'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///medicsan.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(150), nullable=False)
+
+class History(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    query = db.Column(db.String(500), nullable=False)
+    source = db.Column(db.String(50), nullable=False)
+    time = db.Column(db.String(50), nullable=False)
+
+class Favorite(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    medicine = db.Column(db.String(500), nullable=False)
+    generic_name = db.Column(db.String(500))
+    time = db.Column(db.String(50), nullable=False)
+
+class Analytics(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    query = db.Column(db.String(500), nullable=False)
+    count = db.Column(db.Integer, default=1)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 # ================= ENV =================
 load_dotenv()
@@ -65,28 +103,42 @@ load_json(ANALYTICS_PATH, {})
 
 def add_to_history(query: str, source: str):
     query = query.strip()[:200]
-    if not query:
+    if not query or not current_user.is_authenticated:
         return
 
-    history = load_json(HISTORY_PATH, [])
-    history = [h for h in history if h.get("query", "").lower() != query.lower()]
+    existing = History.query.filter_by(user_id=current_user.id, query=query).first()
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
 
-    history.insert(0, {
-        "query": query,
-        "source": source,
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-
-    save_json(HISTORY_PATH, history[:10])
+    new_h = History(
+        user_id=current_user.id,
+        query=query,
+        source=source,
+        time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.session.add(new_h)
+    db.session.commit()
+    
+    # Keep only top 10
+    user_hist = History.query.filter_by(user_id=current_user.id).order_by(History.id.desc()).all()
+    if len(user_hist) > 10:
+        for h in user_hist[10:]:
+            db.session.delete(h)
+        db.session.commit()
 
 
 def update_analytics(query: str):
     query = query.strip().lower()
-    if not query:
+    if not query or not current_user.is_authenticated:
         return
-    analytics = load_json(ANALYTICS_PATH, {})
-    analytics[query] = analytics.get(query, 0) + 1
-    save_json(ANALYTICS_PATH, analytics)
+    stat = Analytics.query.filter_by(user_id=current_user.id, query=query).first()
+    if stat:
+        stat.count += 1
+    else:
+        new_stat = Analytics(user_id=current_user.id, query=query)
+        db.session.add(new_stat)
+    db.session.commit()
 
 
 def groq_medicine_lookup(medicine_name: str):
@@ -150,12 +202,53 @@ Return JSON only.
 
 
 # ================= ROUTES =================
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        if user:
+            flash('Username already exists.')
+            return redirect(url_for('register'))
+            
+        new_user = User(username=username, password_hash=generate_password_hash(password, method='pbkdf2:sha256'))
+        db.session.add(new_user)
+        db.session.commit()
+        
+        login_user(new_user)
+        return redirect(url_for('home'))
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
+            return redirect(url_for('home'))
+        else:
+            flash('Please check your login details and try again.')
+            return redirect(url_for('login'))
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
+
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard_page():
     return render_template("dashboard.html")
 medicine_cache = {}
@@ -263,18 +356,23 @@ def suggestions():
     })
 
 @app.route("/api/history", methods=["GET"])
+@login_required
 def history_api():
-    history = load_json(HISTORY_PATH, [])
+    history_items = History.query.filter_by(user_id=current_user.id).order_by(History.id.desc()).all()
+    history = [{"query": h.query, "source": h.source, "time": h.time} for h in history_items]
     return jsonify({"success": True, "history": history})
 
 
 @app.route("/api/favorites", methods=["GET"])
+@login_required
 def favorites_api():
-    favs = load_json(FAV_PATH, [])
+    fav_items = Favorite.query.filter_by(user_id=current_user.id).order_by(Favorite.id.desc()).all()
+    favs = [{"medicine": f.medicine, "generic_name": f.generic_name, "time": f.time} for f in fav_items]
     return jsonify({"success": True, "favorites": favs})
 
 
 @app.route("/api/favorites/toggle", methods=["POST"])
+@login_required
 def favorites_toggle():
     data = request.get_json()
 
@@ -289,30 +387,37 @@ def favorites_toggle():
     if not medicine:
         return jsonify({"success": False, "error": "Medicine missing."})
 
-    favs = load_json(FAV_PATH, [])
-
-    existing = next((f for f in favs if f.get("medicine", "").lower() == medicine), None)
+    existing = Favorite.query.filter_by(user_id=current_user.id, medicine=medicine).first()
     if existing:
-        favs = [f for f in favs if f.get("medicine", "").lower() != medicine]
-        save_json(FAV_PATH, favs)
+        db.session.delete(existing)
+        db.session.commit()
         return jsonify({"success": True, "favorited": False})
 
-    favs.insert(0, {
-        "medicine": medicine,
-        "generic_name": generic_name,
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-    favs = favs[:20]
-    save_json(FAV_PATH, favs)
+    new_fav = Favorite(
+        user_id=current_user.id,
+        medicine=medicine,
+        generic_name=generic_name,
+        time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+    db.session.add(new_fav)
+    db.session.commit()
+    
+    user_favs = Favorite.query.filter_by(user_id=current_user.id).order_by(Favorite.id.desc()).all()
+    if len(user_favs) > 20:
+        for f in user_favs[20:]:
+            db.session.delete(f)
+        db.session.commit()
+        
     return jsonify({"success": True, "favorited": True})
 
 
 @app.route("/api/analytics", methods=["GET"])
+@login_required
 def analytics_api():
-    analytics = load_json(ANALYTICS_PATH, {})
-    # Top 10
-    top = sorted(analytics.items(), key=lambda x: x[1], reverse=True)[:10]
-    return jsonify({"success": True, "top": top, "all": analytics})
+    stats = Analytics.query.filter_by(user_id=current_user.id).all()
+    analytics_dict = {s.query: s.count for s in stats}
+    top = sorted(analytics_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+    return jsonify({"success": True, "top": top, "all": analytics_dict})
 
 
 @app.route("/api/medicine", methods=["POST"])
@@ -660,8 +765,10 @@ Return JSON only.
             "details": str(e)
         }), 500
 @app.route("/api/favorites/clear", methods=["POST"])
+@login_required
 def clear_favorites():
-    save_json(FAV_PATH, [])
+    Favorite.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
     return jsonify({"success": True, "message": "Favorites cleared successfully."})
 
 # @app.route("/api/report/pdf", methods=["POST"])
@@ -1436,13 +1543,16 @@ def report_pdf():
     )
 
 @app.route("/api/history/clear", methods=["POST"])
+@login_required
 def clear_history():
-    # Clear history
-    save_json(HISTORY_PATH, [])
+    History.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
     return jsonify({"success": True, "message": "History cleared successfully."})
 @app.route("/api/analytics/clear", methods=["POST"])
+@login_required
 def clear_analytics():
-    save_json(ANALYTICS_PATH, {})
+    Analytics.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
     return jsonify({"success": True, "message": "Analytics cleared successfully."})
 @app.route("/api/scan-medicine", methods=["POST"])
 def scan_medicine():

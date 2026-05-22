@@ -5,3 +5,5 @@ reportlab==4.2.2
 gunicorn==21.2.0
 requests==2.32.3
 pdfkit
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3

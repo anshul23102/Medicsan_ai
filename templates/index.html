@@ -23,11 +23,16 @@
 
         <nav class="navbar-links">
           <a class="nav-link" href="/">Home</a>
-          <a class="nav-link" href="/dashboard">Dashboard</a>
-          <a class="nav-link" href="/compare">Compare</a>
-          <a class="nav-link" href="/interaction">Interaction</a>
-          <a class="nav-link" href="/symptom">Symptom</a>
-          <a class="nav-link" href="/assistant">Assistant</a>
+          {% if current_user.is_authenticated %}
+            <a class="nav-link" href="/dashboard">Dashboard</a>
+            <a class="nav-link" href="/compare">Compare</a>
+            <a class="nav-link" href="/interaction">Interaction</a>
+            <a class="nav-link" href="/symptom">Symptom</a>
+            <a class="nav-link" href="/assistant">Assistant</a>
+            <a class="nav-link" href="/logout" style="color: #ef4444; font-weight: bold;">Logout ({{ current_user.username }})</a>
+          {% else %}
+            <a class="nav-link" href="/login" style="color: #10b981; font-weight: bold;">Login / Register</a>
+          {% endif %}
         </nav>
 
         <div class="navbar-actions">
