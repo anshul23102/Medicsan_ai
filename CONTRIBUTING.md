@@ -77,5 +77,4 @@ Submit PR with proper description.
 - UI improvements
 - Bug fixes
 - Documentation
-- AI model improvements
 - Backend optimization
