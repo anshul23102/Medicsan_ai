@@ -1,6 +1,8 @@
 import json
 import os
 import threading
+import time
+from collections import OrderedDict, deque
 from datetime import datetime
 from io import BytesIO
 
@@ -29,7 +31,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 file_lock = threading.Lock()
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "supersecretkey123"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or os.urandom(32).hex()
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///medicsan.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -271,7 +273,41 @@ def dashboard_page():
     return render_template("dashboard.html")
 
 
-medicine_cache = {}
+# ---------------------------------------------------------------------------
+# Per-IP sliding-window rate limiter for the /api/medicine endpoint.
+# Keeps a deque of request timestamps per IP; entries older than the window
+# are pruned on each access so memory stays bounded.
+# ---------------------------------------------------------------------------
+_MEDICINE_RATE_LIMIT = 10  # max requests per window per IP
+_MEDICINE_RATE_WINDOW = 60  # window size in seconds
+_medicine_rate_store: dict[str, deque] = {}
+_medicine_rate_lock = threading.Lock()
+
+
+def _is_medicine_rate_limited(ip: str) -> bool:
+    """Return True if the IP has exceeded the rate limit for /api/medicine."""
+    now = time.time()
+    cutoff = now - _MEDICINE_RATE_WINDOW
+    with _medicine_rate_lock:
+        window = _medicine_rate_store.setdefault(ip, deque())
+        while window and window[0] < cutoff:
+            window.popleft()
+        if len(window) >= _MEDICINE_RATE_LIMIT:
+            return True
+        window.append(now)
+        # Prune IPs whose windows are fully expired to keep the dict bounded.
+        if len(_medicine_rate_store) > 10_000:
+            stale = [k for k, v in _medicine_rate_store.items() if not v]
+            for k in stale:
+                del _medicine_rate_store[k]
+        return False
+
+
+# Bounded LRU cache for medicine names resolved via the FDA API.
+# The oldest entries are evicted once the cap is reached so the dict
+# never grows beyond this limit regardless of how long the server runs.
+_MEDICINE_CACHE_MAX = 2000
+medicine_cache: OrderedDict = OrderedDict()
 
 POPULAR_MEDICINES = [
     "Paracetamol",
@@ -340,7 +376,10 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        medicine_cache[clean_name] = True
+                        if clean_name not in medicine_cache:
+                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                medicine_cache.popitem(last=False)
+                            medicine_cache[clean_name] = True
 
                 for generic in openfda.get("generic_name", []):
                     clean_name = generic.title()
@@ -348,7 +387,10 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        medicine_cache[clean_name] = True
+                        if clean_name not in medicine_cache:
+                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                medicine_cache.popitem(last=False)
+                            medicine_cache[clean_name] = True
 
     except Exception:
         pass
@@ -429,7 +471,14 @@ def analytics_api():
 
 
 @app.route("/api/medicine", methods=["POST"])
+@login_required
 def medicine_info():
+    ip = request.remote_addr or "unknown"
+    if _is_medicine_rate_limited(ip):
+        return jsonify(
+            {"success": False, "error": "Rate limit exceeded. Please wait before retrying."}
+        ), 429
+
     try:
         data = request.get_json()
 
