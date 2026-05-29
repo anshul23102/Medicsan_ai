@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from collections import OrderedDict
 from datetime import datetime
 from io import BytesIO
 
@@ -271,7 +272,10 @@ def dashboard_page():
     return render_template("dashboard.html")
 
 
-medicine_cache = {}
+# Cap the FDA name cache so it never grows beyond this number of entries.
+# Once the limit is reached the oldest entry is evicted before each insert.
+_MEDICINE_CACHE_MAX = 2000
+medicine_cache: OrderedDict = OrderedDict()
 
 POPULAR_MEDICINES = [
     "Paracetamol",
@@ -340,7 +344,10 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        medicine_cache[clean_name] = True
+                        if clean_name not in medicine_cache:
+                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                medicine_cache.popitem(last=False)
+                            medicine_cache[clean_name] = True
 
                 for generic in openfda.get("generic_name", []):
                     clean_name = generic.title()
@@ -348,7 +355,10 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        medicine_cache[clean_name] = True
+                        if clean_name not in medicine_cache:
+                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                medicine_cache.popitem(last=False)
+                            medicine_cache[clean_name] = True
 
     except Exception:
         pass
