@@ -668,6 +668,8 @@ def interaction_page():
 
 
 @app.route("/api/interaction", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
 def medicine_interaction():
     try:
         data = request.get_json()
@@ -1546,6 +1548,8 @@ def clear_analytics():
 
 
 @app.route("/api/scan-medicine", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
 def scan_medicine():
     if client is None:
         return jsonify(
