@@ -570,6 +570,8 @@ def compare_page():
 
 
 @app.route("/api/compare", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
 def compare_medicines():
     try:
         data = request.get_json()
