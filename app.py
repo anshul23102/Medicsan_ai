@@ -309,6 +309,13 @@ def dashboard_page():
 # Once the limit is reached the oldest entry is evicted before each insert.
 _MEDICINE_CACHE_MAX = 2000
 medicine_cache: OrderedDict = OrderedDict()
+# Lock that must be held whenever medicine_cache is read or written.
+# Flask's development server runs in a single thread but the production
+# deployment (gunicorn with workers, or threaded=True) serves multiple
+# requests concurrently. OrderedDict is not thread-safe: concurrent reads
+# and writes can corrupt the internal linked list. The lock also ensures
+# the size check + eviction + insert sequence is performed atomically.
+_cache_lock = threading.Lock()
 
 POPULAR_MEDICINES = [
     "Paracetamol",
@@ -377,10 +384,11 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        if clean_name not in medicine_cache:
-                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
-                                medicine_cache.popitem(last=False)
-                            medicine_cache[clean_name] = True
+                        with _cache_lock:
+                            if clean_name not in medicine_cache:
+                                if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                    medicine_cache.popitem(last=False)
+                                medicine_cache[clean_name] = True
 
                 for generic in openfda.get("generic_name", []):
                     clean_name = generic.title()
@@ -388,10 +396,11 @@ def suggestions():
                     if len(clean_name) < 40:
                         suggestions.append(clean_name)
 
-                        if clean_name not in medicine_cache:
-                            if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
-                                medicine_cache.popitem(last=False)
-                            medicine_cache[clean_name] = True
+                        with _cache_lock:
+                            if clean_name not in medicine_cache:
+                                if len(medicine_cache) >= _MEDICINE_CACHE_MAX:
+                                    medicine_cache.popitem(last=False)
+                                medicine_cache[clean_name] = True
 
     except Exception:
         pass
