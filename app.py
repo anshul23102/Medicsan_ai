@@ -533,7 +533,7 @@ def medicine_info():
 
     except Exception as e:
         return jsonify(
-            {"success": False, "error": "Internal server error.", "details": str(e)}
+            {"success": False, "error": "Internal server error."}
         ), 500
 
 
@@ -658,7 +658,7 @@ Return JSON only.
 
     except Exception as e:
         return jsonify(
-            {"success": False, "error": "Failed to compare medicines.", "details": str(e)}
+            {"success": False, "error": "Failed to compare medicines."}
         ), 500
 
 
@@ -732,7 +732,7 @@ Return JSON only.
 
     except Exception as e:
         return jsonify(
-            {"success": False, "error": "Failed to check medicine interaction.", "details": str(e)}
+            {"success": False, "error": "Failed to check medicine interaction."}
         ), 500
 
 
@@ -1686,7 +1686,7 @@ Rules:
 
     except Exception as e:
         return jsonify(
-            {"success": False, "error": "Groq AI error. Try again.", "details": str(e)}
+            {"success": False, "error": "Groq AI error. Try again."}
         ), 500
 
 
