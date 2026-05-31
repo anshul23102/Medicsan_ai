@@ -579,9 +579,7 @@ def medicine_info():
         ), 200
 
     except Exception as e:
-        return jsonify(
-            {"success": False, "error": "Internal server error.", "details": str(e)}
-        ), 500
+        return jsonify({"success": False, "error": "Internal server error."}), 500
 
 
 def get_medicine_data(medicine_name: str):
@@ -706,9 +704,7 @@ Return JSON only.
         ), 200
 
     except Exception as e:
-        return jsonify(
-            {"success": False, "error": "Failed to compare medicines.", "details": str(e)}
-        ), 500
+        return jsonify({"success": False, "error": "Failed to compare medicines."}), 500
 
 
 @app.route("/interaction")
@@ -780,9 +776,7 @@ Return JSON only.
         return jsonify({"success": True, "data": result}), 200
 
     except Exception as e:
-        return jsonify(
-            {"success": False, "error": "Failed to check medicine interaction.", "details": str(e)}
-        ), 500
+        return jsonify({"success": False, "error": "Failed to check medicine interaction."}), 500
 
 
 @app.route("/api/favorites/clear", methods=["POST"])
@@ -1734,9 +1728,7 @@ Rules:
         return jsonify({"success": True, "answer": answer})
 
     except Exception as e:
-        return jsonify(
-            {"success": False, "error": "Groq AI error. Try again.", "details": str(e)}
-        ), 500
+        return jsonify({"success": False, "error": "Groq AI error. Try again."}), 500
 
 
 @app.route("/download-report", methods=["POST"])
