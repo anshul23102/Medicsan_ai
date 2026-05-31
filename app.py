@@ -345,7 +345,22 @@ POPULAR_MEDICINES = [
 def suggestions():
     query = request.args.get("q", "").strip().lower()
 
+    # Reject empty queries early.
     if len(query) < 1:
+        return jsonify({"suggestions": []})
+
+    # Cap the query length so an attacker cannot craft arbitrarily long strings
+    # that are interpolated into the FDA API URL without sanitisation.
+    # Medicine names are rarely longer than 50 characters; truncating here is
+    # safe and prevents the URL from growing beyond what the FDA API expects.
+    query = query[:50]
+
+    # Allow only alphanumeric characters, spaces, and hyphens. Any other
+    # character (ampersands, slashes, brackets, etc.) could manipulate the
+    # FDA API query string or other downstream URL parameters.
+    import re as _re
+
+    if not _re.match(r"^[a-z0-9 -]+$", query):
         return jsonify({"suggestions": []})
 
     suggestions = []
