@@ -329,6 +329,7 @@ def suggestions():
     # character (ampersands, slashes, brackets, etc.) could manipulate the
     # FDA API query string or other downstream URL parameters.
     import re as _re
+
     if not _re.match(r"^[a-z0-9 -]+$", query):
         return jsonify({"suggestions": []})
 
