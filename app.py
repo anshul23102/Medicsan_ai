@@ -1821,14 +1821,40 @@ def download_report():
 @app.route("/api/upload-report", methods=["POST"])
 @login_required
 def upload_report():
+    # --- START OF SECURITY HARDENING (ISSUE #84) ---
     if "file" not in request.files:
         return jsonify({"success": False, "error": "No file uploaded."}), 400
-
+        
     file = request.files["file"]
     if file.filename == "":
         return jsonify({"success": False, "error": "No file selected."}), 400
 
-    filename = file.filename.lower()
+    # 1. Filename Sanitization against Path Traversal
+    safe_filename = secure_filename(file.filename)
+    if not safe_filename:
+        return jsonify({"success": False, "error": "Invalid or malformed filename detected."}), 400
+
+    # 2. Deep-Tissue Magic Bytes Validation (PDF and Image Check)
+    header_bytes = file.read(2048)
+    file.seek(0)  # Reset pointer instantly so PyPDF2/Pillow can read it from start later
+    
+    detected_mime = magic.from_buffer(header_bytes, mime=True)
+    ALLOWED_MIME_TYPES = {
+        'application/pdf', 
+        'image/jpeg', 
+        'image/png', 
+        'application/dicom', 
+        'image/dicom'
+    }
+    
+    if detected_mime not in ALLOWED_MIME_TYPES:
+        return jsonify({
+            "success": False, 
+            "error": f"Security violation: Spoofed file profile. Extension mismatch for mime {detected_mime}."
+        }), 400
+
+    filename = safe_filename.lower()
+    # --- END OF SECURITY HARDENING ---
 
     try:
         if filename.endswith(".pdf"):
