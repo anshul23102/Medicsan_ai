@@ -1,11 +1,8 @@
-import json
 import os
-import threading
-from collections import OrderedDict
+import sys
 from datetime import datetime
-from io import BytesIO
-import requests
-from dotenv import load_dotenv
+
+# 🎨 Flask & Extensions Core Layers
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -18,6 +15,12 @@ from flask_login import (
     logout_user,
 )
 from flask_sqlalchemy import SQLAlchemy
+
+# 🛡️ Werkzeug Utilities & Magic (Missing Imports Added)
+from werkzeug.utils import secure_filename
+import magic
+
+# 🤖 AI Engine Frameworks
 from groq import Groq
 from flask import (
     Flask,
@@ -1824,7 +1827,7 @@ def upload_report():
     # --- START OF SECURITY HARDENING (ISSUE #84) ---
     if "file" not in request.files:
         return jsonify({"success": False, "error": "No file uploaded."}), 400
-        
+
     file = request.files["file"]
     if file.filename == "":
         return jsonify({"success": False, "error": "No file selected."}), 400
@@ -1837,21 +1840,23 @@ def upload_report():
     # 2. Deep-Tissue Magic Bytes Validation (PDF and Image Check)
     header_bytes = file.read(2048)
     file.seek(0)  # Reset pointer instantly so PyPDF2/Pillow can read it from start later
-    
+
     detected_mime = magic.from_buffer(header_bytes, mime=True)
     ALLOWED_MIME_TYPES = {
-        'application/pdf', 
-        'image/jpeg', 
-        'image/png', 
-        'application/dicom', 
-        'image/dicom'
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "application/dicom",
+        "image/dicom",
     }
-    
+
     if detected_mime not in ALLOWED_MIME_TYPES:
-        return jsonify({
-            "success": False, 
-            "error": f"Security violation: Spoofed file profile. Extension mismatch for mime {detected_mime}."
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Security violation: Spoofed file profile. Extension mismatch for mime {detected_mime}.",
+            }
+        ), 400
 
     filename = safe_filename.lower()
     # --- END OF SECURITY HARDENING ---
