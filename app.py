@@ -6,7 +6,7 @@ from datetime import datetime
 from io import BytesIO
 import requests
 from dotenv import load_dotenv
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import (
@@ -19,17 +19,6 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from groq import Groq
-from flask import (
-    Flask,
-    flash,
-    jsonify,
-    redirect,
-    render_template,
-    request,
-    send_file,
-    session,
-    url_for,
-)
 
 from reportlab.lib import colors
 
