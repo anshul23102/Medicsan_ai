@@ -44,7 +44,14 @@ file_lock = threading.Lock()
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or "change-me-in-production"
+_secret_key = os.getenv("SECRET_KEY")
+if not _secret_key:
+    raise ValueError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate a strong random value and export it before starting the server. "
+        "Example: export SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")"
+    )
+app.config["SECRET_KEY"] = _secret_key
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///medicsan.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
