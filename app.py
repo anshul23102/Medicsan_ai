@@ -137,9 +137,6 @@ def save_json(path, data):
 
 
 MED_DB = load_json(MED_DATA_PATH, {})
-load_json(HISTORY_PATH, [])
-load_json(FAV_PATH, [])
-load_json(ANALYTICS_PATH, {})
 
 
 def add_to_history(query: str, source: str):
