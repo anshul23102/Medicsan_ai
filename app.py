@@ -1,8 +1,11 @@
+import json
 import os
-import sys
+import threading
+from collections import OrderedDict
 from datetime import datetime
-
-# 🎨 Flask & Extensions Core Layers
+from io import BytesIO
+import requests
+from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -15,12 +18,6 @@ from flask_login import (
     logout_user,
 )
 from flask_sqlalchemy import SQLAlchemy
-
-# 🛡️ Werkzeug Utilities & Magic (Missing Imports Added)
-from werkzeug.utils import secure_filename
-import magic
-
-# 🤖 AI Engine Frameworks
 from groq import Groq
 from flask import (
     Flask,
