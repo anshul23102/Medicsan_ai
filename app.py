@@ -1824,7 +1824,7 @@ def upload_report():
     # --- START OF SECURITY HARDENING (ISSUE #84) ---
     if "file" not in request.files:
         return jsonify({"success": False, "error": "No file uploaded."}), 400
-        
+
     file = request.files["file"]
     if file.filename == "":
         return jsonify({"success": False, "error": "No file selected."}), 400
@@ -1837,21 +1837,23 @@ def upload_report():
     # 2. Deep-Tissue Magic Bytes Validation (PDF and Image Check)
     header_bytes = file.read(2048)
     file.seek(0)  # Reset pointer instantly so PyPDF2/Pillow can read it from start later
-    
+
     detected_mime = magic.from_buffer(header_bytes, mime=True)
     ALLOWED_MIME_TYPES = {
-        'application/pdf', 
-        'image/jpeg', 
-        'image/png', 
-        'application/dicom', 
-        'image/dicom'
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "application/dicom",
+        "image/dicom",
     }
-    
+
     if detected_mime not in ALLOWED_MIME_TYPES:
-        return jsonify({
-            "success": False, 
-            "error": f"Security violation: Spoofed file profile. Extension mismatch for mime {detected_mime}."
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Security violation: Spoofed file profile. Extension mismatch for mime {detected_mime}.",
+            }
+        ), 400
 
     filename = safe_filename.lower()
     # --- END OF SECURITY HARDENING ---

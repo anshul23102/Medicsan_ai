@@ -78,3 +78,11 @@ Submit PR with proper description.
 - Bug fixes
 - Documentation
 - Backend optimization
+## 🛠️ Pre-commit Hooks Automation Setup
+
+To maintain code quality consistency, this repository uses automated validation hooks via `pre-commit`. 
+
+### Setup Instructions
+1. Activate your local python environment and install pre-commit:
+```bash
+   pip install pre-commit
