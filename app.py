@@ -251,8 +251,30 @@ Return JSON only.
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        if not username:
+            flash("Username is required.")
+            return redirect(url_for("register"))
+
+        if len(username) < 3 or len(username) > 150:
+            flash("Username must be between 3 and 150 characters.")
+            return redirect(url_for("register"))
+
+        if not password:
+            flash("Password is required.")
+            return redirect(url_for("register"))
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.")
+            return redirect(url_for("register"))
+
+        # bcrypt silently truncates at 72 bytes; reject passwords beyond that
+        # length since the extra characters add no security but waste CPU.
+        if len(password) > 72:
+            flash("Password must not exceed 72 characters.")
+            return redirect(url_for("register"))
 
         user = User.query.filter_by(username=username).first()
         if user:
