@@ -1,12 +1,15 @@
 import json
 import os
+import re as _re
 import threading
 from collections import OrderedDict
 from datetime import datetime
 from io import BytesIO
+from urllib.parse import quote
+
 import requests
 from dotenv import load_dotenv
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import (
@@ -19,17 +22,6 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from groq import Groq
-from flask import (
-    Flask,
-    flash,
-    jsonify,
-    redirect,
-    render_template,
-    request,
-    send_file,
-    session,
-    url_for,
-)
 
 from reportlab.lib import colors
 
@@ -44,7 +36,14 @@ file_lock = threading.Lock()
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or "change-me-in-production"
+_secret_key = os.getenv("SECRET_KEY")
+if not _secret_key:
+    raise ValueError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate a strong random value and export it before starting the server. "
+        "Example: export SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")"
+    )
+app.config["SECRET_KEY"] = _secret_key
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///medicsan.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -53,6 +52,9 @@ db = SQLAlchemy(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+
+_REG_USERNAME = _re.compile(r"^[A-Za-z][A-Za-z0-9_]{2,19}$")
+_REG_PASSWORD = _re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,64}$")
 
 
 @login_manager.unauthorized_handler
@@ -69,6 +71,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     storage_uri="memory://",
+    default_limits=["5 per second", "60 per minute", "200 per day"],
 )
 
 
@@ -109,7 +112,16 @@ def load_user(user_id):
 # ================= ENV =================
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+if GROQ_API_KEY:
+    client = Groq(api_key=GROQ_API_KEY)
+else:
+    raise RuntimeError("GROQ_API_KEY not set.")
+
+secret_key = os.getenv("SECRET_KEY")
+if secret_key:
+    app.config["SECRET_KEY"] = secret_key
+else:
+    raise RuntimeError("SECRET_KEY is missing. Set in .env")
 
 # ================= PATHS =================
 MED_DATA_PATH = os.path.join("data", "medicines.json")
@@ -137,9 +149,6 @@ def save_json(path, data):
 
 
 MED_DB = load_json(MED_DATA_PATH, {})
-load_json(HISTORY_PATH, [])
-load_json(FAV_PATH, [])
-load_json(ANALYTICS_PATH, {})
 
 
 def add_to_history(query: str, source: str):
@@ -249,31 +258,18 @@ Return JSON only.
 
 # ================= ROUTES =================
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit("5 per minute; 10 per day")
 def register():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        username = request.form.get("username", _REG_USERNAME)
+        password = request.form.get("password", _REG_PASSWORD)
 
-        if not username:
-            flash("Username is required.")
+        if not username or " " in username:
+            flash("username required")
             return redirect(url_for("register"))
 
-        if len(username) < 3 or len(username) > 150:
-            flash("Username must be between 3 and 150 characters.")
-            return redirect(url_for("register"))
-
-        if not password:
-            flash("Password is required.")
-            return redirect(url_for("register"))
-
-        if len(password) < 8:
-            flash("Password must be at least 8 characters.")
-            return redirect(url_for("register"))
-
-        # bcrypt silently truncates at 72 bytes; reject passwords beyond that
-        # length since the extra characters add no security but waste CPU.
-        if len(password) > 72:
-            flash("Password must not exceed 72 characters.")
+        if not check_password_hash or " " in password:
+            flash("password required")
             return redirect(url_for("register"))
 
         user = User.query.filter_by(username=username).first()
@@ -294,6 +290,7 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if request.method == "POST":
         username = request.form.get("username")
@@ -380,7 +377,6 @@ def suggestions():
     # Allow only alphanumeric characters, spaces, and hyphens. Any other
     # character (ampersands, slashes, brackets, etc.) could manipulate the
     # FDA API query string or other downstream URL parameters.
-    import re as _re
 
     if not _re.match(r"^[a-z0-9 -]+$", query):
         return jsonify({"suggestions": []})
@@ -405,7 +401,7 @@ def suggestions():
     # =========================
 
     try:
-        url = f"https://api.fda.gov/drug/label.json?search=openfda.brand_name:{query}*&limit=10"
+        url = f"https://api.fda.gov/drug/label.json?search=openfda.brand_name:{quote(query)}*&limit=10"
 
         response = requests.get(url, timeout=0.8)
 
@@ -449,6 +445,7 @@ def suggestions():
 
 
 @app.route("/api/history", methods=["GET"])
+@limiter.limit("10 per minute; 100 per day")
 @login_required
 def history_api():
     history_items = (
@@ -735,6 +732,7 @@ def interaction_page():
 
 
 @app.route("/api/interaction", methods=["POST"])
+@limiter.limit("10 per minute")
 def medicine_interaction():
     try:
         data = request.get_json()
@@ -1611,6 +1609,7 @@ def clear_analytics():
 
 
 @app.route("/api/scan-medicine", methods=["POST"])
+@limiter.limit("10 per minute")
 def scan_medicine():
     if client is None:
         return jsonify(
@@ -1711,6 +1710,7 @@ def assistant_page():
 
 
 @app.route("/api/assistant", methods=["POST"])
+@limiter.limit("10 per minute")
 def assistant_api():
     data = request.get_json() or {}
     query = (data.get("query") or "").strip()[:500]
@@ -1998,5 +1998,17 @@ def handle_api_500(e):
     return e
 
 
+@app.errorhandler(429)
+def ratelimit_handler():
+    return jsonify({"error: Too many requests sent. Please wait and try again."}), 429
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug = os.getenv("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+    host = os.getenv("FLASK_HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "5000"))
+
+    if debug:
+        print("WARNING: Running with debug=True (development only)")
+
+    app.run(host=host, port=port, debug=debug)
