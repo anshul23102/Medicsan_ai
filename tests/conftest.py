@@ -1,4 +1,11 @@
+import os
+
 import pytest
+
+
+os.environ.setdefault("GROQ_API_KEY", "test_groq_key")
+os.environ.setdefault("SECRET_KEY", "test")
+os.environ.setdefault("FLASK_DEBUG", "0")
 
 from app import app as flask_app
 from app import db
